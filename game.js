@@ -1,20 +1,23 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-// ===== LOAD YOUR SPRITE =====
-const skellySheet = new Image();
-skellySheet.src = "assets/skeleton.png";
+// ===== LOAD SPRITE =====
+const skelly = new Image();
+skelly.src = "assets/skeleton.png";
 
-// ===== GAME STATE =====
-let state="menu";
+let loaded = false;
+skelly.onload = () => loaded = true;
 
-let player = { x:300,y:250,speed:3,hp:100 };
+// ===== STATE =====
+let state = "menu";
+
+let player = {x:300,y:250,speed:3,hp:100};
 let bossLevel = 1;
 
 let keys={}, bullets=[], enemies=[];
 let boss=null, mouse={x:0,y:0}, gameOver=false;
 
-// ===== INPUT =====
+// INPUT
 document.addEventListener("keydown", e=>keys[e.key]=true);
 document.addEventListener("keyup", e=>keys[e.key]=false);
 
@@ -30,7 +33,7 @@ canvas.addEventListener("click", ()=>{
  shoot();
 });
 
-// ===== START =====
+// START
 function start(){
  state="game";
  player.hp=100;
@@ -39,28 +42,28 @@ function start(){
  spawnEnemies();
 }
 
-// ===== SHOOT =====
+// SHOOT
 function shoot(){
  let dx=mouse.x-player.x;
  let dy=mouse.y-player.y;
  let d=Math.hypot(dx,dy);
 
  bullets.push({
-  x:player.x+20,
-  y:player.y+20,
-  dx:dx/d*7,
-  dy:dy/d*7
+  x:player.x+20,y:player.y+20,
+  dx:dx/d*7,dy:dy/d*7
  });
 }
 
-// ===== ENEMIES =====
+// SPAWN
 function spawnEnemies(){
  for(let i=0;i<5;i++){
   enemies.push({
-    x:Math.random()*800,
-    y:Math.random()*500,
-    speed:1,
-    frame:0
+   x:Math.random()*800,
+   y:Math.random()*500,
+   speed:1,
+   frame:0,
+   state:"walk",
+   dead:false
   });
  }
 }
@@ -69,12 +72,12 @@ function spawnBoss(){
  boss={
   x:450,y:120,
   hp:5+(bossLevel-1)*4,
-  timer:0,
-  frame:0
+  frame:0,
+  timer:0
  };
 }
 
-// ===== UPDATE =====
+// UPDATE
 function update(){
  if(state!=="game"||gameOver) return;
 
@@ -91,23 +94,33 @@ function update(){
   b.y+=b.dy;
  });
 
- // ENEMY MOVE + ANIMATION
+ // ENEMIES
  enemies.forEach(e=>{
-  let dx=player.x-e.x,dy=player.y-e.y;
-  let d=Math.hypot(dx,dy);
+  if(e.dead){
+    e.frame++;
+    return;
+  }
 
-  e.x+=dx/d*e.speed;
-  e.y+=dy/d*e.speed;
+  let dx=player.x-e.x;
+  let dy=player.y-e.y;
+  let d=Math.hypot(dx,dy);
 
   e.frame++;
 
-  if(d<30) player.hp-=0.3;
+  if(d<50){
+    e.state="attack";
+    player.hp-=0.3;
+  } else {
+    e.state="walk";
+    e.x+=dx/d*e.speed;
+    e.y+=dy/d*e.speed;
+  }
  });
 
  // BOSS
  if(boss){
-  boss.timer++;
   boss.frame++;
+  boss.timer++;
 
   let dx=player.x-boss.x;
   let dy=player.y-boss.y;
@@ -116,37 +129,43 @@ function update(){
   boss.x+=dx/d*0.5;
 
   if(boss.timer>40){
-   boss.timer=0;
-   bullets.push({
-    x:boss.x,y:boss.y,
-    dx:dx/d*6,
-    dy:dy/d*6,
-    enemy:true
-   });
+    boss.timer=0;
+    bullets.push({
+      x:boss.x,y:boss.y,
+      dx:dx/d*6,dy:dy/d*6,
+      enemy:true
+    });
   }
  }
 
- // COLLISIONS
+ // COLLISION
  bullets.forEach(b=>{
   enemies.forEach(e=>{
-    if(Math.hypot(b.x-e.x,b.y-e.y)<25){
-      e.dead=true;
-      b.dead=true;
-    }
+   if(!e.dead && Math.hypot(b.x-e.x,b.y-e.y)<25){
+    e.dead=true;
+    e.state="dead";
+    e.frame=0;
+    b.dead=true;
+   }
   });
 
-  if(boss && !b.enemy && Math.hypot(b.x-boss.x,b.y-boss.y)<40){
+  if(boss && !b.enemy && Math.hypot(b.x-boss.x,b.y-boss.y)<45){
     boss.hp--;
     b.dead=true;
   }
 
-  if(b.enemy && Math.hypot(b.x-player.x,b.y-player.y)<20){
+  if(b.enemy && Math.hypot(b.x-player.x,b.y-player.y)<25){
     player.hp-=5;
   }
  });
 
  bullets=bullets.filter(b=>!b.dead);
- enemies=enemies.filter(e=>!e.dead);
+
+ // REMOVE DEAD AFTER ANIMATION
+ enemies=enemies.filter(e=>{
+  if(e.state==="dead" && e.frame>50) return false;
+  return true;
+ });
 
  if(enemies.length===0 && !boss) spawnBoss();
 
@@ -159,11 +178,43 @@ function update(){
  if(player.hp<=0) gameOver=true;
 }
 
-// ===== DRAW =====
-function draw(){
+// DRAW SKELETON
+function drawSkeleton(e){
+ let frame, sx, sy;
 
+ if(e.state==="walk"){
+  frame=Math.floor(e.frame/8)%6;
+  sy=64;
+ }
+ else if(e.state==="attack"){
+  frame=Math.floor(e.frame/6)%6;
+  sy=0;
+ }
+ else if(e.state==="dead"){
+  frame=Math.min(Math.floor(e.frame/6),6);
+  sy=256;
+ }
+
+ sx=frame*64;
+
+ ctx.drawImage(
+  skelly,
+  sx,sy,64,64,
+  e.x-32,e.y-32,64,64
+ );
+}
+
+// DRAW
+function draw(){
  ctx.fillStyle="#0e0e18";
  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+ // WAIT FOR SPRITE
+ if(!loaded){
+  ctx.fillStyle="white";
+  ctx.fillText("Loading...",350,250);
+  return;
+ }
 
  if(state==="menu"){
   ctx.fillStyle="white";
@@ -183,36 +234,26 @@ function draw(){
   ctx.fillRect(b.x,b.y,6,4);
  });
 
- // ✅ DRAW SKELETON (ANIMATED)
- enemies.forEach(e=>{
-  let frame = Math.floor(e.frame/10) % 6; // walking cycle
-  let sx = frame * 64; // frame width
-  let sy = 64; // row with walking frames
+ // ENEMIES
+ enemies.forEach(drawSkeleton);
 
-  ctx.drawImage(
-    skellySheet,
-    sx, sy, 64, 64,
-    e.x-32, e.y-32, 64, 64
-  );
- });
-
- // ✅ DRAW BOSS (BIGGER + SAME SHEET)
+ // BOSS
  if(boss){
-  let frame = Math.floor(boss.frame/10) % 6;
-  let sx = frame * 64;
-  let sy = 64;
+  let frame=Math.floor(boss.frame/8)%6;
+  let sx=frame*64;
+  let sy=64;
 
   ctx.drawImage(
-    skellySheet,
-    sx, sy, 64, 64,
-    boss.x-48, boss.y-48, 96, 96
+    skelly,
+    sx,sy,64,64,
+    boss.x-48,boss.y-48,96,96
   );
 
   ctx.fillStyle="red";
   ctx.fillRect(boss.x-50,boss.y-60,boss.hp*10,6);
  }
 
- // HP
+ // UI
  ctx.fillStyle="red";
  ctx.fillRect(20,20,player.hp*2,10);
 
@@ -233,4 +274,3 @@ function loop(){
  requestAnimationFrame(loop);
 }
 loop();
-``
