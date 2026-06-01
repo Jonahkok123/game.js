@@ -50,6 +50,14 @@ function update() {
     if (keys["a"]) player.x -= player.speed;
     if (keys["d"]) player.x += player.speed;
 
+    // KEEP PLAYER INSIDE SCREEN
+    if (player.x < 0) player.x = 0;
+    if (player.y < 0) player.y = 0;
+    if (player.x > canvas.width - 40) player.x = canvas.width - 40;
+    if (player.y > canvas.height - 40) player.y = canvas.height - 40;
+}
+``
+
     // move bullets
     bullets.forEach(b => {
         b.x += b.dx;
