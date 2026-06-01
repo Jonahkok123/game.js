@@ -1,239 +1,275 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-// ===== GAME STATE =====
-let state = "menu"; // menu or game
+let state = "menu";
 
-// PLAYER
-let player = {
-    x: 300,
-    y: 250,
-    speed: 3,
-    hp: 100
-};
-
-// INPUT
-let keys = {};
+let player = { x: 300, y: 250, speed: 3, hp: 100 };
+let keys = {}, bullets = [], enemies = [], particles = [];
+let boss = null;
 let mouse = {x:0,y:0};
-let bullets = [];
-let enemies = [];
 let gameOver = false;
 
-document.addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-document.addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+// INPUT
+document.addEventListener("keydown", e => keys[e.key] = true);
+document.addEventListener("keyup", e => keys[e.key] = false);
 
-canvas.addEventListener("mousemove", e => {
-    let r = canvas.getBoundingClientRect();
-    mouse.x = e.clientX - r.left;
-    mouse.y = e.clientY - r.top;
+canvas.addEventListener("mousemove", e=>{
+ let r=canvas.getBoundingClientRect();
+ mouse.x=e.clientX-r.left;
+ mouse.y=e.clientY-r.top;
 });
 
-// CLICK
-canvas.addEventListener("click", () => {
-    if (state === "menu") {
-        state = "game";
-        startGame();
-        return;
-    }
-
-    if (gameOver) {
-        state = "menu";
-        return;
-    }
-
-    shoot();
+canvas.addEventListener("click", ()=>{
+ if(state==="menu"){ startGame(); return; }
+ if(gameOver){ state="menu"; return; }
+ shoot();
 });
 
-// ===== GAME FUNCTIONS =====
-function startGame() {
-    player.hp = 100;
-    player.x = 300;
-    player.y = 250;
-    bullets = [];
-    enemies = [];
-    gameOver = false;
-    spawn();
+// START
+function startGame(){
+ state="game";
+ player.hp=100;
+ bullets=[]; enemies=[]; particles=[];
+ boss=null; gameOver=false;
+ spawnEnemies();
 }
 
-function shoot() {
-    let dx = mouse.x - player.x;
-    let dy = mouse.y - player.y;
-    let d = Math.hypot(dx,dy);
+// SHOOT MAGIC
+function shoot(){
+ let dx=mouse.x-player.x;
+ let dy=mouse.y-player.y;
+ let d=Math.hypot(dx,dy);
 
+ bullets.push({
+  x:player.x+20,y:player.y+20,
+  dx:dx/d*6, dy:dy/d*6
+ });
+
+ // particles ✨
+ for(let i=0;i<5;i++){
+  particles.push({
+   x:player.x+20,y:player.y+20,
+   dx:(Math.random()-0.5)*2,
+   dy:(Math.random()-0.5)*2,
+   life:20
+  });
+ }
+}
+
+// SPAWN
+function spawnEnemies(){
+ for(let i=0;i<5;i++){
+  enemies.push({
+   x:Math.random()*800,
+   y:Math.random()*500,
+   speed:1
+  });
+ }
+}
+
+// SPAWN BOSS
+function spawnBoss(){
+ boss={
+  x:450,y:100,
+  hp:200,
+  timer:0
+ };
+}
+
+// UPDATE
+function update(){
+ if(state!=="game"||gameOver) return;
+
+ if(keys["w"]) player.y-=player.speed;
+ if(keys["s"]) player.y+=player.speed;
+ if(keys["a"]) player.x-=player.speed;
+ if(keys["d"]) player.x+=player.speed;
+
+ player.x=Math.max(0,Math.min(canvas.width-40,player.x));
+ player.y=Math.max(0,Math.min(canvas.height-40,player.y));
+
+ bullets.forEach(b=>{
+  b.x+=b.dx;
+  b.y+=b.dy;
+ });
+
+ // particles
+ particles.forEach(p=>{
+  p.x+=p.dx;
+  p.y+=p.dy;
+  p.life--;
+ });
+ particles=particles.filter(p=>p.life>0);
+
+ // enemies
+ enemies.forEach(e=>{
+  let dx=player.x-e.x, dy=player.y-e.y;
+  let d=Math.hypot(dx,dy);
+  e.x+=dx/d*e.speed;
+  e.y+=dy/d*e.speed;
+  if(d<30) player.hp-=0.3;
+ });
+
+ // boss attacks ⚡
+ if(boss){
+  boss.timer++;
+  let dx=player.x-boss.x;
+  let dy=player.y-boss.y;
+  let d=Math.hypot(dx,dy);
+
+  boss.x+=dx/d*0.6;
+
+  if(boss.timer>60){
+    boss.timer=0;
     bullets.push({
-        x: player.x+20,
-        y: player.y+20,
-        dx: dx/d*6,
-        dy: dy/d*6
+      x:boss.x,y:boss.y,
+      dx:-dx/d*5,dy:-dy/d*5,
+      enemy:true
     });
-}
+  }
+ }
 
-function spawn() {
-    for (let i=0;i<5;i++) {
-        enemies.push({
-            x: Math.random()*800,
-            y: Math.random()*500,
-            speed: 1 + Math.random()
+ // collisions
+ bullets.forEach(b=>{
+  enemies.forEach(e=>{
+    if(Math.hypot(b.x-e.x,b.y-e.y)<30){
+      e.dead=true; b.dead=true;
+
+      // explosion ✨
+      for(let i=0;i<10;i++){
+        particles.push({
+          x:e.x,y:e.y,
+          dx:(Math.random()-0.5)*3,
+          dy:(Math.random()-0.5)*3,
+          life:30
         });
+      }
     }
+  });
+
+  if(boss && Math.hypot(b.x-boss.x,b.y-boss.y)<40 && !b.enemy){
+    boss.hp-=5;
+    b.dead=true;
+  }
+
+  if(b.enemy && Math.hypot(b.x-player.x,b.y-player.y)<20){
+    player.hp-=5;
+  }
+ });
+
+ bullets=bullets.filter(b=>!b.dead);
+ enemies=enemies.filter(e=>!e.dead);
+
+ // spawn boss
+ if(enemies.length===0 && !boss) spawnBoss();
+
+ if(player.hp<=0) gameOver=true;
 }
 
-// ===== UPDATE =====
-function update() {
-    if (state !== "game" || gameOver) return;
+// DRAW WIZARD
+function drawPlayer(){
+ let x=player.x,y=player.y;
 
-    // movement
-    if (keys["w"]) player.y -= player.speed;
-    if (keys["s"]) player.y += player.speed;
-    if (keys["a"]) player.x -= player.speed;
-    if (keys["d"]) player.x += player.speed;
+ ctx.fillStyle="#4b0082";
+ ctx.fillRect(x+10,y+15,20,20);
 
-    player.x = Math.max(0, Math.min(canvas.width-40, player.x));
-    player.y = Math.max(0, Math.min(canvas.height-40, player.y));
+ ctx.fillStyle="#ffe0bd";
+ ctx.fillRect(x+14,y+6,12,10);
 
-    bullets.forEach(b=>{
-        b.x += b.dx;
-        b.y += b.dy;
-    });
+ ctx.fillStyle="#7f00ff";
+ ctx.beginPath();
+ ctx.moveTo(x+5,y+15);
+ ctx.lineTo(x+20,y-8);
+ ctx.lineTo(x+35,y+15);
+ ctx.fill();
 
-    // enemies move
-    enemies.forEach(e=>{
-        let dx = player.x - e.x;
-        let dy = player.y - e.y;
-        let d = Math.hypot(dx,dy);
-
-        e.x += dx/d * e.speed;
-        e.y += dy/d * e.speed;
-
-        if (d < 35) player.hp -= 0.3;
-    });
-
-    // collisions
-    bullets.forEach(b=>{
-        enemies.forEach(e=>{
-            if (Math.hypot(b.x-e.x,b.y-e.y) < 30) {
-                e.dead = true;
-                b.dead = true;
-            }
-        });
-    });
-
-    bullets = bullets.filter(b=>!b.dead);
-    enemies = enemies.filter(e=>!e.dead);
-
-    if (enemies.length === 0) spawn();
-
-    if (player.hp <= 0) gameOver = true;
+ ctx.fillStyle="#b366ff";
+ ctx.beginPath();
+ ctx.arc(x+25,y+20,5,0,6.28);
+ ctx.fill();
 }
 
-// ===== DRAW WIZARD =====
-function drawPlayer() {
-    let x=player.x,y=player.y;
-
-    ctx.fillStyle="#5a2ca0";
-    ctx.fillRect(x+10,y+15,20,20);
-
-    ctx.fillStyle="#ffe0bd";
-    ctx.fillRect(x+14,y+6,12,10);
-
-    ctx.fillStyle="#8c4fff";
-    ctx.beginPath();
-    ctx.moveTo(x+5,y+15);
-    ctx.lineTo(x+20,y-8);
-    ctx.lineTo(x+35,y+15);
-    ctx.fill();
-
-    ctx.fillStyle="#8b5a2b";
-    ctx.fillRect(x+2,y+12,4,25);
-
-    ctx.fillStyle="violet";
-    ctx.beginPath();
-    ctx.arc(x+4,y+5,5,0,6.28);
-    ctx.fill();
+// DRAW SKELETON
+function drawSkeleton(e){
+ ctx.fillStyle="#ddd";
+ ctx.fillRect(e.x-10,e.y-15,20,15);
+ ctx.fillRect(e.x-5,e.y,10,20);
 }
 
-// ===== DRAW SKELETON ENEMY 💀 =====
-function drawSkeleton(e) {
-    let x=e.x,y=e.y;
+// DRAW BOSS 💀
+function drawBoss(){
+ ctx.fillStyle="purple";
+ ctx.beginPath();
+ ctx.arc(boss.x,boss.y,25,0,6.28);
+ ctx.fill();
 
-    // skull
-    ctx.fillStyle="#eee";
-    ctx.fillRect(x-8,y-15,16,12);
-
-    // eyes
-    ctx.fillStyle="black";
-    ctx.fillRect(x-5,y-12,3,3);
-    ctx.fillRect(x+2,y-12,3,3);
-
-    // body
-    ctx.fillStyle="#ccc";
-    ctx.fillRect(x-5,y-3,10,20);
-
-    // arms
-    ctx.fillRect(x-12,y+5,6,3);
-    ctx.fillRect(x+6,y+5,6,3);
-
-    // legs
-    ctx.fillRect(x-6,y+18,4,10);
-    ctx.fillRect(x+2,y+18,4,10);
-
-    // glow aura
-    ctx.globalAlpha=0.2;
-    ctx.fillStyle="white";
-    ctx.fillRect(x-20,y-20,40,50);
-    ctx.globalAlpha=1;
+ ctx.fillStyle="white";
+ ctx.fillText("BOSS",boss.x-20,boss.y-30);
 }
 
-// ===== DRAW =====
-function draw() {
+// DRAW
+function draw(){
+ ctx.fillStyle="#121220";
+ ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    // background
-    ctx.fillStyle="#0f0f1a";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+ // tiled dungeon
+ ctx.fillStyle="#1c1c2b";
+ for(let x=0;x<canvas.width;x+=40){
+  for(let y=0;y<canvas.height;y+=40){
+    ctx.fillRect(x,y,38,38);
+  }
+ }
 
-    // menu
-    if (state==="menu") {
-        ctx.fillStyle="white";
-        ctx.font="40px Arial";
-        ctx.fillText("DUNGEON GAME",250,200);
+ if(state==="menu"){
+  ctx.fillStyle="white";
+  ctx.font="40px Arial";
+  ctx.fillText("Dungeon Game",250,200);
+  ctx.font="20px Arial";
+  ctx.fillText("Click to Start",340,260);
+  return;
+ }
 
-        ctx.font="20px Arial";
-        ctx.fillText("Click to Start",340,270);
-        return;
-    }
+ drawPlayer();
 
-    // game
-    drawPlayer();
+ bullets.forEach(b=>{
+  ctx.fillStyle=b.enemy?"red":"orange";
+  ctx.beginPath();
+  ctx.arc(b.x,b.y,5,0,6.28);
+  ctx.fill();
 
-    bullets.forEach(b=>{
-        ctx.fillStyle="orange";
-        ctx.beginPath();
-        ctx.arc(b.x,b.y,5,0,6.28);
-        ctx.fill();
-    });
+  // glow
+  ctx.globalAlpha=0.2;
+  ctx.beginPath();
+  ctx.arc(b.x,b.y,10,0,6.28);
+  ctx.fill();
+  ctx.globalAlpha=1;
+ });
 
-    enemies.forEach(drawSkeleton);
+ enemies.forEach(drawSkeleton);
 
-    // HP bar
-    ctx.fillStyle="red";
-    ctx.fillRect(20,20,player.hp*2,10);
-    ctx.strokeRect(20,20,200,10);
+ if(boss) drawBoss();
 
-    // game over
-    if (gameOver) {
-        ctx.fillStyle="red";
-        ctx.font="40px Arial";
-        ctx.fillText("GAME OVER",280,260);
+ // particles ✨
+ ctx.fillStyle="violet";
+ particles.forEach(p=>{
+   ctx.fillRect(p.x,p.y,3,3);
+ });
 
-        ctx.font="16px Arial";
-        ctx.fillText("Click to return to menu",260,300);
-    }
+ // HP
+ ctx.fillStyle="red";
+ ctx.fillRect(20,20,player.hp*2,10);
+
+ if(gameOver){
+  ctx.fillStyle="red";
+  ctx.font="40px Arial";
+  ctx.fillText("GAME OVER",280,260);
+ }
 }
 
 // LOOP
 function loop(){
-    update();
-    draw();
-    requestAnimationFrame(loop);
+ update();
+ draw();
+ requestAnimationFrame(loop);
 }
 loop();
