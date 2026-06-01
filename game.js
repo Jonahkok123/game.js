@@ -1,307 +1,224 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
+// ===== SETTINGS =====
+let tileSize = 40;
+
 // ===== PLAYER =====
-let player = { x: 300, y: 250, speed: 3, hp: 100 };
+let player = { x: 400, y: 250, speed: 3, hp: 100 };
 
 // ===== STATE =====
-let keys = {}, bullets = [], enemies = [], boss = null;
-let mouse = {x:0,y:0}, gameOver = false, bossLevel = 1;
+let keys = {}, bullets = [], enemies = [];
+let mouse = { x:0, y:0 };
 
 // INPUT
 document.addEventListener("keydown", e => keys[e.key] = true);
 document.addEventListener("keyup", e => keys[e.key] = false);
 
-canvas.addEventListener("mousemove", e=>{
- let r = canvas.getBoundingClientRect();
- mouse.x = e.clientX - r.left;
- mouse.y = e.clientY - r.top;
+canvas.addEventListener("mousemove", e => {
+    let r = canvas.getBoundingClientRect();
+    mouse.x = e.clientX - r.left;
+    mouse.y = e.clientY - r.top;
 });
 
 canvas.addEventListener("click", shoot);
 
-// SHOOT
+// ===== SHOOT =====
 function shoot(){
- let dx = mouse.x - player.x;
- let dy = mouse.y - player.y;
- let d = Math.hypot(dx,dy)||1;
+    let dx = mouse.x - player.x;
+    let dy = mouse.y - player.y;
+    let d = Math.hypot(dx,dy)||1;
 
- bullets.push({
-   x: player.x+20,
-   y: player.y+20,
-   dx: dx/d*7,
-   dy: dy/d*7
- });
+    bullets.push({
+        x: player.x,
+        y: player.y,
+        dx: dx/d * 8,
+        dy: dy/d * 8
+    });
 }
 
-// SPAWN
-function spawnEnemies(){
- for(let i=0;i<5;i++){
-  enemies.push({
-    x: Math.random()*800,
-    y: Math.random()*500,
-    speed: 1,
-    frame: 0,
-    state: "walk",
-    dead: false
-  });
- }
+// ===== SPAWN =====
+function spawn(){
+    for(let i=0;i<6;i++){
+        enemies.push({
+            x: Math.random()*800,
+            y: Math.random()*500,
+            hp: 3
+        });
+    }
 }
-spawnEnemies();
+spawn();
 
-function spawnBoss(){
- boss = {
-   x:400,
-   y:120,
-   hp:5+(bossLevel-1)*4,
-   frame:0,
-   timer:0
- };
-}
-
-// UPDATE
+// ===== UPDATE =====
 function update(){
 
- // movement
- if(keys["w"]) player.y -= player.speed;
- if(keys["s"]) player.y += player.speed;
- if(keys["a"]) player.x -= player.speed;
- if(keys["d"]) player.x += player.speed;
+    // movement
+    if(keys["w"]) player.y -= player.speed;
+    if(keys["s"]) player.y += player.speed;
+    if(keys["a"]) player.x -= player.speed;
+    if(keys["d"]) player.x += player.speed;
 
- player.x = Math.max(0,Math.min(canvas.width-40,player.x));
- player.y = Math.max(0,Math.min(canvas.height-64,player.y));
+    player.x = Math.max(20, Math.min(canvas.width-20, player.x));
+    player.y = Math.max(20, Math.min(canvas.height-20, player.y));
 
- // bullets
- bullets.forEach(b=>{
-   b.x+=b.dx;
-   b.y+=b.dy;
- });
+    // bullets
+    bullets.forEach(b=>{
+        b.x += b.dx;
+        b.y += b.dy;
+    });
 
- // enemies
- enemies.forEach(e=>{
-   if(e.dead){ e.frame++; return; }
+    // enemies
+    enemies.forEach(e=>{
+        let dx = player.x - e.x;
+        let dy = player.y - e.y;
+        let d = Math.hypot(dx,dy)||1;
 
-   let dx = player.x - e.x;
-   let dy = player.y - e.y;
-   let d = Math.hypot(dx,dy)||1;
+        e.x += dx/d * 1.2;
+        e.y += dy/d * 1.2;
 
-   e.frame++;
+        if(d < 25){
+            player.hp -= 0.2;
+        }
+    });
 
-   if(d<45){
-     e.state="attack";
-     player.hp -= 0.2;
-   } else {
-     e.state="walk";
-     e.x += dx/d * e.speed;
-     e.y += dy/d * e.speed;
-   }
- });
+    // collisions
+    bullets.forEach(b=>{
+        enemies.forEach(e=>{
+            if(Math.hypot(b.x-e.x,b.y-e.y) < 18){
+                e.hp--;
+                b.dead = true;
+            }
+        });
+    });
 
- // boss
- if(boss){
-   boss.frame++;
-   boss.timer++;
+    bullets = bullets.filter(b=>!b.dead);
+    enemies = enemies.filter(e=>e.hp > 0);
 
-   let dx = player.x - boss.x;
-   let dy = player.y - boss.y;
-   let d = Math.hypot(dx,dy)||1;
-
-   boss.x += dx/d * 0.4;
-
-   if(boss.timer > 30){
-     boss.timer = 0;
-     bullets.push({
-       x:boss.x,y:boss.y,
-       dx:dx/d*6,dy:dy/d*6,
-       enemy:true
-     });
-   }
- }
-
- // collisions
- bullets.forEach(b=>{
-   enemies.forEach(e=>{
-     if(!e.dead && Math.hypot(b.x-e.x,b.y-e.y)<20){
-       e.dead=true;
-       e.state="dead";
-       e.frame=0;
-       b.dead=true;
-     }
-   });
-
-   if(boss && !b.enemy && Math.hypot(b.x-boss.x,b.y-boss.y)<40){
-     boss.hp--;
-     b.dead=true;
-   }
-
-   if(b.enemy && Math.hypot(b.x-player.x,b.y-player.y)<20){
-     player.hp -= 5;
-   }
- });
-
- bullets = bullets.filter(b=>!b.dead);
- enemies = enemies.filter(e=>!(e.state==="dead" && e.frame>40));
-
- if(enemies.length===0 && !boss) spawnBoss();
-
- if(boss && boss.hp<=0){
-   boss=null;
-   bossLevel++;
-   spawnEnemies();
- }
-
- if(player.hp<=0) gameOver=true;
+    if(enemies.length === 0) spawn();
 }
 
-// ===== DRAW PLAYER (MOONLIGHTER STYLE WIZARD) =====
+// ===== TILE FLOOR (MOONLIGHTER STYLE) =====
+function drawFloor(){
+
+    for(let x=0; x<canvas.width; x+=tileSize){
+        for(let y=0; y<canvas.height; y+=tileSize){
+
+            // base tile
+            ctx.fillStyle = "#1c3a3a";
+            ctx.fillRect(x,y,tileSize,tileSize);
+
+            // moss variation
+            if(Math.random() < 0.1){
+                ctx.fillStyle = "#245050";
+                ctx.fillRect(x,y,tileSize,tileSize);
+            }
+
+            // cracks
+            ctx.fillStyle = "#152828";
+            ctx.fillRect(x+5,y+5,5,5);
+        }
+    }
+}
+
+// ===== WALLS =====
+function drawWalls(){
+
+    ctx.fillStyle = "#2c2f3f";
+
+    // top wall
+    ctx.fillRect(0,0,canvas.width,30);
+
+    // bottom wall
+    ctx.fillRect(0,canvas.height-30,canvas.width,30);
+
+    // side walls
+    ctx.fillRect(0,0,30,canvas.height);
+    ctx.fillRect(canvas.width-30,0,30,canvas.height);
+}
+
+// ===== SHADOW SYSTEM =====
+function drawShadow(x,y){
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    ctx.beginPath();
+    ctx.ellipse(x,y,18,6,0,0,6.28);
+    ctx.fill();
+}
+
+// ===== PLAYER (CLEAN SPRITE STYLE) =====
 function drawPlayer(){
 
- let x=player.x, y=player.y;
+    drawShadow(player.x, player.y+18);
 
- // shadow
- ctx.fillStyle="rgba(0,0,0,0.4)";
- ctx.beginPath();
- ctx.ellipse(x+20,y+60,16,6,0,0,6.28);
- ctx.fill();
+    // body
+    ctx.fillStyle = "#2e4070";
+    ctx.fillRect(player.x-10, player.y-12, 20, 24);
 
- // robe
- ctx.fillStyle="#1f2a44";
- ctx.fillRect(x+10,y+20,20,40);
+    // head
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(player.x-6, player.y-20, 12, 10);
 
- ctx.fillStyle="#2e3f6e";
- ctx.fillRect(x+12,y+25,16,30);
-
- // gold trim
- ctx.fillStyle="#f2c94c";
- ctx.fillRect(x+18,y+25,3,30);
-
- // head shadow
- ctx.fillStyle="#111";
- ctx.fillRect(x+14,y+8,12,14);
-
- // glowing eyes
- ctx.fillStyle="#fff";
- ctx.fillRect(x+17,y+14,2,2);
- ctx.fillRect(x+21,y+14,2,2);
-
- // hat
- ctx.fillStyle="#1f2a44";
- ctx.beginPath();
- ctx.moveTo(x+5,y+20);
- ctx.lineTo(x+20,y-10);
- ctx.lineTo(x+35,y+20);
- ctx.fill();
-
- ctx.fillRect(x+5,y+18,30,6);
-
- // staff
- ctx.fillStyle="#8b5a2b";
- ctx.fillRect(x+2,y+5,4,60);
-
- // flame glow
- ctx.fillStyle="#ffae00";
- ctx.beginPath();
- ctx.arc(x+4,y+2,6,0,6.28);
- ctx.fill();
-
- ctx.globalAlpha=0.3;
- ctx.beginPath();
- ctx.arc(x+4,y+2,12,0,6.28);
- ctx.fill();
- ctx.globalAlpha=1;
+    // sword flash
+    ctx.fillStyle = "white";
+    ctx.fillRect(player.x+10, player.y-5, 8, 3);
 }
 
-// ===== DRAW ENEMY =====
+// ===== ENEMY STYLE =====
 function drawEnemy(e){
 
- let x=e.x, y=e.y;
+    drawShadow(e.x, e.y+16);
 
- if(e.state==="dead"){
-   ctx.fillStyle="#555";
-   ctx.fillRect(x-10,y+20,20,6);
-   return;
- }
+    // blob/skeleton hybrid style
+    ctx.fillStyle = "#4ecdc4";
+    ctx.fillRect(e.x-8, e.y-10, 16, 20);
 
- // shadow
- ctx.fillStyle="rgba(0,0,0,0.4)";
- ctx.fillRect(x-12,y+35,24,4);
-
- // skull
- ctx.fillStyle="#eaeaea";
- ctx.fillRect(x-8,y-15,16,12);
-
- ctx.fillStyle="black";
- ctx.fillRect(x-4,y-12,2,2);
- ctx.fillRect(x+2,y-12,2,2);
-
- // body
- ctx.fillStyle="#bfbfbf";
- ctx.fillRect(x-5,y,10,20);
+    ctx.fillStyle = "#0f2a2a";
+    ctx.fillRect(e.x-4, e.y-6, 3, 3);
+    ctx.fillRect(e.x+1, e.y-6, 3, 3);
 }
 
-// ===== DRAW BOSS =====
-function drawBoss(){
+// ===== BULLETS =====
+function drawBullets(){
+    bullets.forEach(b=>{
+        ctx.fillStyle = "#ffcc00";
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,4,0,6.28);
+        ctx.fill();
 
- let x=boss.x, y=boss.y;
-
- // shadow
- ctx.fillStyle="rgba(0,0,0,0.5)";
- ctx.fillRect(x-30,y+50,60,6);
-
- // body
- ctx.fillStyle="#ddd";
- ctx.fillRect(x-20,y-30,40,50);
-
- // skull
- ctx.fillStyle="#fff";
- ctx.fillRect(x-15,y-50,30,20);
-
- // HP bar
- ctx.fillStyle="red";
- ctx.fillRect(x-40,y-70,boss.hp*10,6);
+        // glow
+        ctx.globalAlpha = 0.2;
+        ctx.beginPath();
+        ctx.arc(b.x,b.y,10,0,6.28);
+        ctx.fill();
+        ctx.globalAlpha = 1;
+    });
 }
 
 // ===== DRAW =====
 function draw(){
 
- // dungeon floor
- ctx.fillStyle="#141c2f";
- ctx.fillRect(0,0,canvas.width,canvas.height);
+    // background
+    ctx.fillStyle="#0f1c1c";
+    ctx.fillRect(0,0,canvas.width,canvas.height);
 
- // tile effect
- ctx.fillStyle="#1c2744";
- for(let x=0;x<canvas.width;x+=40){
-  for(let y=0;y<canvas.height;y+=40){
-    ctx.fillRect(x,y,38,38);
-  }
- }
+    drawFloor();
+    drawWalls();
 
- drawPlayer();
+    drawPlayer();
+    enemies.forEach(drawEnemy);
+    drawBullets();
 
- bullets.forEach(b=>{
-  ctx.fillStyle=b.enemy?"red":"orange";
-  ctx.fillRect(b.x,b.y,6,4);
- });
+    // HP bar
+    ctx.fillStyle="black";
+    ctx.fillRect(20,20,200,12);
 
- enemies.forEach(drawEnemy);
-
- if(boss) drawBoss();
-
- // HP
- ctx.fillStyle="red";
- ctx.fillRect(20,20,player.hp*2,10);
-
- if(gameOver){
-  ctx.fillStyle="red";
-  ctx.font="40px Arial";
-  ctx.fillText("GAME OVER",260,250);
- }
+    ctx.fillStyle="red";
+    ctx.fillRect(20,20,player.hp*2,12);
 }
 
 // LOOP
 function loop(){
- update();
- draw();
- requestAnimationFrame(loop);
+    update();
+    draw();
+    requestAnimationFrame(loop);
 }
 loop();
