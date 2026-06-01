@@ -19,15 +19,16 @@ document.addEventListener("keyup", (e) => {
     keys[e.key.toLowerCase()] = false;
 });
 
-// click to shoot
+// CLICK = SHOOT
 canvas.addEventListener("click", () => {
     bullets.push({
-        x: player.x,
-        y: player.y,
-        speed: 5
+        x: player.x + 40,   // start in front of player
+        y: player.y + 20,
+        dx: 6               // faster speed
     });
 });
 
+// update
 function update() {
     // movement
     if (keys["w"]) player.y -= player.speed;
@@ -37,12 +38,12 @@ function update() {
 
     // move bullets
     bullets.forEach(b => {
-        b.x += b.speed;
+        b.x += b.dx;
     });
 }
 
+// draw
 function draw() {
-    // background
     ctx.fillStyle = "black";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -53,10 +54,11 @@ function draw() {
     // bullets
     ctx.fillStyle = "orange";
     bullets.forEach(b => {
-        ctx.fillRect(b.x, b.y, 10, 5);
+        ctx.fillRect(b.x, b.y, 12, 5);
     });
 }
 
+// loop
 function loop() {
     update();
     draw();
