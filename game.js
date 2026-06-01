@@ -1,12 +1,14 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
+// PLAYER
 let player = {
     x: 100,
     y: 200,
     speed: 3
 };
 
+// STATE
 let keys = {};
 let bullets = [];
 let enemies = [];
@@ -50,20 +52,18 @@ function update() {
     if (keys["a"]) player.x -= player.speed;
     if (keys["d"]) player.x += player.speed;
 
-    // KEEP PLAYER INSIDE SCREEN
+    // KEEP PLAYER INSIDE SCREEN ✅
     if (player.x < 0) player.x = 0;
     if (player.y < 0) player.y = 0;
     if (player.x > canvas.width - 40) player.x = canvas.width - 40;
     if (player.y > canvas.height - 40) player.y = canvas.height - 40;
-}
-``
 
-    // move bullets
+    // bullets move
     bullets.forEach(b => {
         b.x += b.dx;
     });
 
-    // move enemies toward player
+    // enemies follow player
     enemies.forEach(e => {
         let dx = player.x - e.x;
         let dy = player.y - e.y;
@@ -75,7 +75,7 @@ function update() {
         }
     });
 
-    // bullet hits enemy
+    // collisions
     bullets.forEach(b => {
         enemies.forEach(e => {
             let d = Math.hypot(b.x - e.x, b.y - e.y);
