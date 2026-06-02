@@ -16,12 +16,16 @@ const wizard = load("assets/wizard.png");
 const skeleton = load("assets/skeleton.png");
 const tiles = load("assets/tiles.png");
 
+// ===== GAME STATE =====
+let gameState = "menu"; // menu, playing, paused, dead
+
 // ===== PLAYER =====
 let player = {
     x: 600,
     y: 350,
     speed: 3,
-    dir: 1
+    dir: 1,
+    hp: 100
 };
 
 let keys = {};
@@ -29,8 +33,22 @@ let enemies = [];
 let bullets = [];
 let mouse = {x:0,y:0};
 
-// INPUT
-document.addEventListener("keydown", e => keys[e.key]=true);
+// ===== INPUT =====
+document.addEventListener("keydown", e=>{
+    keys[e.key]=true;
+
+    // pause toggle
+    if(e.key === "Escape"){
+        if(gameState === "playing") gameState = "paused";
+        else if(gameState === "paused") gameState = "playing";
+    }
+
+    // start game
+    if(gameState === "menu" && e.key === "Enter"){
+        gameState = "playing";
+    }
+});
+
 document.addEventListener("keyup", e => keys[e.key]=false);
 
 canvas.addEventListener("mousemove", e=>{
@@ -39,7 +57,22 @@ canvas.addEventListener("mousemove", e=>{
     mouse.y = e.clientY - r.top;
 });
 
-canvas.addEventListener("click", shoot);
+canvas.addEventListener("click", ()=>{
+    if(gameState !== "playing") return;
+    shoot();
+});
+
+// ===== SAVE SYSTEM =====
+function saveGame(){
+    localStorage.setItem("playerData", JSON.stringify(player));
+}
+
+function loadGame(){
+    let data = localStorage.getItem("playerData");
+    if(data){
+        player = JSON.parse(data);
+    }
+}
 
 // ===== SHOOT =====
 function shoot(){
@@ -60,7 +93,6 @@ function spawn(){
 
     enemies = [];
 
-    // normal enemies
     for(let i=0;i<4;i++){
         enemies.push({
             x: Math.random()*1000+100,
@@ -71,12 +103,12 @@ function spawn(){
         });
     }
 
-    // ✅ BOSS (big skeleton)
+    // boss
     enemies.push({
         x: 600,
         y: 150,
         speed: 0.6,
-        hp: 10,
+        hp: 12,
         boss: true
     });
 }
@@ -84,6 +116,8 @@ spawn();
 
 // ===== UPDATE =====
 function update(){
+
+    if(gameState !== "playing") return;
 
     let mx=0,my=0;
 
@@ -99,7 +133,7 @@ function update(){
     player.x += mx*player.speed;
     player.y += my*player.speed;
 
-    // ✅ WALL BOUNDS (BORDER SYSTEM)
+    // boundaries
     player.x = Math.max(40, Math.min(canvas.width-40, player.x));
     player.y = Math.max(40, Math.min(canvas.height-40, player.y));
 
@@ -115,26 +149,41 @@ function update(){
 
         e.x += dx/d * e.speed;
         e.y += dy/d * e.speed;
+
+        // ✅ DAMAGE PLAYER
+        if(Math.hypot(player.x-e.x, player.y-e.y) < 30){
+            player.hp -= e.boss ? 0.5 : 0.2;
+
+            // knockback
+            player.x -= dx/d * 2;
+            player.y -= dy/d * 2;
+        }
     });
 
-    // collisions
     bullets.forEach(b=>{
         enemies.forEach(e=>{
             if(Math.hypot(b.x-e.x,b.y-e.y)<20){
                 e.hp--;
                 b.dead=true;
-
-                if(e.hp <= 0){
-                    e.dead=true;
-                }
             }
         });
+    });
+
+    enemies.forEach(e=>{
+        if(e.hp <= 0) e.dead = true;
     });
 
     bullets = bullets.filter(b=>!b.dead);
     enemies = enemies.filter(e=>!e.dead);
 
-    if(enemies.length===0) spawn();
+    if(player.hp <= 0){
+        gameState = "dead";
+    }
+
+    if(enemies.length===0){
+        saveGame(); // ✅ auto-save
+        spawn();
+    }
 }
 
 // ===== DRAW FLOOR =====
@@ -146,18 +195,12 @@ function drawMap(){
     }
 }
 
-// ===== DRAW WALLS =====
+// ===== WALLS =====
 function drawWalls(){
-
-    ctx.fillStyle = "#1a1a1a";
-
-    // top
+    ctx.fillStyle="#111";
     ctx.fillRect(0,0,canvas.width,40);
-    // bottom
     ctx.fillRect(0,canvas.height-40,canvas.width,40);
-    // left
     ctx.fillRect(0,0,40,canvas.height);
-    // right
     ctx.fillRect(canvas.width-40,0,40,canvas.height);
 }
 
@@ -186,21 +229,45 @@ function drawEnemy(e){
     let w = e.boss ? 80 : 28;
     let h = e.boss ? 80 : 48;
 
-    // boss tint
-    if(e.boss){
-        ctx.fillStyle="rgba(255,0,0,0.3)";
-        ctx.beginPath();
-        ctx.arc(e.x,e.y,50,0,6.28);
-        ctx.fill();
-    }
-
     ctx.drawImage(skeleton,e.x-w/2,e.y-h/2,w,h);
 
-    // HP bar for boss
+    // boss HP bar
     if(e.boss){
         ctx.fillStyle="red";
-        ctx.fillRect(e.x-40,e.y-60,e.hp*8,6);
+        ctx.fillRect(e.x-40,e.y-60,e.hp*6,6);
     }
+}
+
+// ===== UI =====
+function drawUI(){
+
+    // health bar
+    ctx.fillStyle="red";
+    ctx.fillRect(20,20,player.hp*2,10);
+
+    ctx.strokeStyle="white";
+    ctx.strokeRect(20,20,200,10);
+}
+
+// ===== MENUS =====
+function drawMenu(){
+    ctx.fillStyle="white";
+    ctx.font="40px Arial";
+    ctx.fillText("INTO THE DARKNESS",300,250);
+
+    ctx.font="20px Arial";
+    ctx.fillText("Press ENTER to start",420,300);
+}
+
+function drawPause(){
+    ctx.fillStyle="white";
+    ctx.fillText("PAUSED",560,300);
+}
+
+function drawDeath(){
+    ctx.fillStyle="red";
+    ctx.font="30px Arial";
+    ctx.fillText("YOU DIED",520,300);
 }
 
 // ===== DRAW =====
@@ -211,6 +278,11 @@ function draw(){
     if(loaded < TOTAL){
         ctx.fillStyle="white";
         ctx.fillText("Loading...",550,300);
+        return;
+    }
+
+    if(gameState === "menu"){
+        drawMenu();
         return;
     }
 
@@ -226,11 +298,14 @@ function draw(){
     });
 
     drawPlayer();
+    drawWalls();
+    drawUI();
 
-    drawWalls(); // ✅ walls drawn last
+    if(gameState === "paused") drawPause();
+    if(gameState === "dead") drawDeath();
 }
 
-// LOOP
+// ===== LOOP =====
 function loop(){
     update();
     draw();
