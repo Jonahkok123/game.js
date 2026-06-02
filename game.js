@@ -1,12 +1,15 @@
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-// ===== LOAD IMAGES =====
-function load(src) {
+// ===== LOAD SYSTEM =====
+let loaded = 0;
+const TOTAL = 3;
+
+function load(src){
     const img = new Image();
     img.src = src;
+    img.onload = () => loaded++;
     img.onerror = () => console.log("FAILED:", src);
-    img.onload = () => console.log("LOADED:", src);
     return img;
 }
 
@@ -15,12 +18,7 @@ const skeleton = load("assets/skeleton.png");
 const tiles = load("assets/tiles.png");
 
 // ===== PLAYER =====
-let player = {
-    x: 600,
-    y: 350,
-    speed: 3,
-    dir: 1
-};
+let player = { x: 600, y: 350, speed: 3, dir: 1 };
 
 let keys = {};
 let enemies = [];
@@ -114,9 +112,9 @@ function update(){
 
 // DRAW FLOOR
 function drawMap(){
-    for(let x=0; x<canvas.width; x+=32){
-        for(let y=0; y<canvas.height; y+=32){
-            ctx.drawImage(tiles, x, y, 32, 32);
+    for(let x=0;x<canvas.width;x+=32){
+        for(let y=0;y<canvas.height;y+=32){
+            ctx.drawImage(tiles,x,y,32,32);
         }
     }
 }
@@ -154,7 +152,16 @@ function drawEnemy(e){
 
 // DRAW
 function draw(){
+
     ctx.clearRect(0,0,canvas.width,canvas.height);
+
+    // ✅ FIX: only wait until images are loaded
+    if(loaded < TOTAL){
+        ctx.fillStyle="white";
+        ctx.font="22px Arial";
+        ctx.fillText("Loading assets...", 500, 300);
+        return;
+    }
 
     drawMap();
 
