@@ -21,8 +21,8 @@ tiles.onload = check;
 
 // ===== PLAYER =====
 let player = {
-    x: 400,
-    y: 300,
+    x: 600,
+    y: 350,
     speed: 3,
     dir: 1
 };
@@ -38,7 +38,7 @@ document.addEventListener("keydown", e => keys[e.key]=true);
 document.addEventListener("keyup", e => keys[e.key]=false);
 
 canvas.addEventListener("mousemove", e=>{
-    let r = canvas.getBoundingClientRect();
+    const r = canvas.getBoundingClientRect();
     mouse.x = e.clientX - r.left;
     mouse.y = e.clientY - r.top;
 });
@@ -47,13 +47,13 @@ canvas.addEventListener("click", shoot);
 
 // ===== SHOOT =====
 function shoot(){
-    let dx = mouse.x - player.x;
-    let dy = mouse.y - player.y;
-    let d = Math.hypot(dx,dy)||1;
+    const dx = mouse.x - player.x;
+    const dy = mouse.y - player.y;
+    const d = Math.hypot(dx,dy)||1;
 
     bullets.push({
         x: player.x,
-        y: player.y,
+        y: player.y - 20, // from hands
         dx: dx/d * 7,
         dy: dy/d * 7
     });
@@ -64,8 +64,8 @@ function spawn(){
     enemies = [];
     for(let i=0;i<5;i++){
         enemies.push({
-            x: Math.random()*700+50,
-            y: Math.random()*400+50,
+            x: Math.random()*1100 + 50,
+            y: Math.random()*600 + 50,
             speed: 1
         });
     }
@@ -75,36 +75,32 @@ spawn();
 // ===== UPDATE =====
 function update(){
 
-    // movement
     if(keys["w"]) player.y -= player.speed;
     if(keys["s"]) player.y += player.speed;
-    if(keys["a"]){ player.x -= player.speed; player.dir = -1; }
-    if(keys["d"]){ player.x += player.speed; player.dir = 1; }
+    if(keys["a"]){ player.x -= player.speed; player.dir=-1; }
+    if(keys["d"]){ player.x += player.speed; player.dir=1; }
 
-    // keep inside screen
+    // bounds
     player.x = Math.max(32, Math.min(canvas.width-32, player.x));
     player.y = Math.max(32, Math.min(canvas.height-32, player.y));
 
-    // bullets
     bullets.forEach(b=>{
         b.x += b.dx;
         b.y += b.dy;
     });
 
-    // enemies follow player
     enemies.forEach(e=>{
-        let dx = player.x - e.x;
-        let dy = player.y - e.y;
-        let d = Math.hypot(dx,dy)||1;
+        const dx = player.x - e.x;
+        const dy = player.y - e.y;
+        const d = Math.hypot(dx,dy)||1;
 
         e.x += dx/d * e.speed;
         e.y += dy/d * e.speed;
     });
 
-    // collisions
     bullets.forEach(b=>{
         enemies.forEach(e=>{
-            if(Math.hypot(b.x - e.x, b.y - e.y) < 20){
+            if(Math.hypot(b.x-e.x,b.y-e.y) < 20){
                 e.dead = true;
                 b.dead = true;
             }
@@ -117,7 +113,7 @@ function update(){
     if(enemies.length === 0) spawn();
 }
 
-// ===== DRAW FLOOR (YOUR TILE) =====
+// ===== DRAW FLOOR =====
 function drawMap(){
     for(let x=0; x<canvas.width; x+=32){
         for(let y=0; y<canvas.height; y+=32){
@@ -129,8 +125,11 @@ function drawMap(){
 // ===== DRAW PLAYER =====
 function drawPlayer(){
 
+    const w = 64;
+    const h = 64;
+
     // shadow
-    ctx.fillStyle="rgba(0,0,0,0.3)";
+    ctx.fillStyle="rgba(0,0,0,0.35)";
     ctx.beginPath();
     ctx.ellipse(player.x, player.y+20, 16, 6, 0, 0, Math.PI*2);
     ctx.fill();
@@ -141,16 +140,18 @@ function drawPlayer(){
         ctx.scale(-1,1);
         ctx.drawImage(
             wizard,
-            -player.x-32,
-            player.y-32,
-            64,64
+            -player.x - w/2,
+            player.y - h,
+            w,
+            h
         );
     } else {
         ctx.drawImage(
             wizard,
-            player.x-32,
-            player.y-32,
-            64,64
+            player.x - w/2,
+            player.y - h,
+            w,
+            h
         );
     }
 
@@ -160,7 +161,8 @@ function drawPlayer(){
 // ===== DRAW ENEMY =====
 function drawEnemy(e){
 
-    // shadow
+    const size = 40;
+
     ctx.fillStyle="rgba(0,0,0,0.3)";
     ctx.beginPath();
     ctx.ellipse(e.x, e.y+12, 12, 5, 0, 0, Math.PI*2);
@@ -168,10 +170,10 @@ function drawEnemy(e){
 
     ctx.drawImage(
         skeleton,
-        e.x-20,
-        e.y-20,
-        40,
-        40
+        e.x - size/2,
+        e.y - size/2,
+        size,
+        size
     );
 }
 
@@ -181,12 +183,11 @@ function draw(){
     if(loaded < 3){
         ctx.fillStyle="white";
         ctx.font="20px Arial";
-        ctx.fillText("Loading...",350,250);
+        ctx.fillText("Loading...",600,350);
         return;
     }
 
-    ctx.fillStyle="#000";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
 
     drawMap();
 
