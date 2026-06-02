@@ -2,20 +2,19 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
 // ===== LOAD IMAGES =====
-const wizard = new Image();
-wizard.src = "assets/wizard.png";
+function loadImage(src){
+    const img = new Image();
+    img.src = src;
 
-const skeleton = new Image();
-skeleton.src = "assets/skeleton.png";
+    img.onload = () => console.log(src + " loaded");
+    img.onerror = () => console.log(src + " FAILED");
 
-const tiles = new Image();
-tiles.src = "assets/tiles.png";
+    return img;
+}
 
-// ===== LOAD CHECK =====
-let loaded = 0;
-[ wizard, skeleton, tiles ].forEach(img => {
-    img.onload = () => loaded++;
-});
+const wizard = loadImage("assets/wizard.png");
+const skeleton = loadImage("assets/skeleton.png");
+const tiles = loadImage("assets/tiles.png");
 
 // ===== PLAYER =====
 let player = {
@@ -31,7 +30,7 @@ let enemies = [];
 let bullets = [];
 let mouse = {x:0,y:0};
 
-// ===== INPUT =====
+// INPUT
 document.addEventListener("keydown", e => keys[e.key]=true);
 document.addEventListener("keyup", e => keys[e.key]=false);
 
@@ -73,7 +72,6 @@ spawn();
 // ===== UPDATE =====
 function update(){
 
-    // ✅ smooth player movement
     let moveX = 0;
     let moveY = 0;
 
@@ -89,33 +87,26 @@ function update(){
     player.x += moveX * player.speed;
     player.y += moveY * player.speed;
 
-    // bounds
     player.x = Math.max(32, Math.min(canvas.width-32, player.x));
     player.y = Math.max(32, Math.min(canvas.height-32, player.y));
 
-    // ✅ smooth bullets
     bullets.forEach(b=>{
         b.x += b.dx;
         b.y += b.dy;
     });
 
-    // ✅ FIXED enemy movement (no jitter)
     enemies.forEach(e=>{
         const dx = player.x - e.x;
         const dy = player.y - e.y;
-        const d = Math.hypot(dx,dy) || 1;
+        const d = Math.hypot(dx,dy)||1;
 
-        const vx = dx / d;
-        const vy = dy / d;
-
-        e.x += vx * e.speed;
-        e.y += vy * e.speed;
+        e.x += (dx/d) * e.speed;
+        e.y += (dy/d) * e.speed;
     });
 
-    // collisions
     bullets.forEach(b=>{
         enemies.forEach(e=>{
-            if(Math.hypot(b.x - e.x, b.y - e.y) < 20){
+            if(Math.hypot(b.x-e.x,b.y-e.y)<20){
                 e.dead = true;
                 b.dead = true;
             }
@@ -130,61 +121,54 @@ function update(){
 
 // ===== DRAW MAP =====
 function drawMap(){
-    for(let x=0; x<canvas.width; x+=32){
-        for(let y=0; y<canvas.height; y+=32){
-            ctx.drawImage(tiles, x, y, 32, 32);
+    for(let x=0;x<canvas.width;x+=32){
+        for(let y=0;y<canvas.height;y+=32){
+            if(tiles.complete){
+                ctx.drawImage(tiles,x,y,32,32);
+            }
         }
     }
 }
 
 // ===== DRAW PLAYER =====
 function drawPlayer(){
-
     const w = 48;
     const h = 48;
 
-    // shadow
-    ctx.fillStyle="rgba(0,0,0,0.35)";
+    ctx.fillStyle="rgba(0,0,0,0.3)";
     ctx.beginPath();
     ctx.ellipse(player.x, player.y+14, 14, 5, 0, 0, Math.PI*2);
     ctx.fill();
 
-    ctx.save();
-
-    if(player.dir === -1){
-        ctx.scale(-1,1);
-        ctx.drawImage(wizard, -player.x - w/2, player.y - h, w, h);
-    } else {
-        ctx.drawImage(wizard, player.x - w/2, player.y - h, w, h);
+    if(wizard.complete){
+        if(player.dir === -1){
+            ctx.save();
+            ctx.scale(-1,1);
+            ctx.drawImage(wizard, -player.x-w/2, player.y-h, w, h);
+            ctx.restore();
+        } else {
+            ctx.drawImage(wizard, player.x-w/2, player.y-h, w, h);
+        }
     }
-
-    ctx.restore();
 }
 
 // ===== DRAW ENEMY =====
 function drawEnemy(e){
-
     const w = 28;
     const h = 48;
 
-    // shadow
     ctx.fillStyle="rgba(0,0,0,0.3)";
     ctx.beginPath();
     ctx.ellipse(e.x, e.y+14, 12, 5, 0, 0, Math.PI*2);
     ctx.fill();
 
-    ctx.drawImage(skeleton, e.x - w/2, e.y - h/2, w, h);
+    if(skeleton.complete){
+        ctx.drawImage(skeleton, e.x-w/2, e.y-h/2, w, h);
+    }
 }
 
 // ===== DRAW =====
 function draw(){
-
-    if(loaded < 3){
-        ctx.fillStyle = "white";
-        ctx.font = "20px Arial";
-        ctx.fillText("Loading...", 550, 300);
-        return;
-    }
 
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
