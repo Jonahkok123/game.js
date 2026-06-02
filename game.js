@@ -2,19 +2,17 @@ const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
 // ===== LOAD IMAGES =====
-function loadImage(src){
+function load(src) {
     const img = new Image();
     img.src = src;
-
-    img.onload = () => console.log(src + " loaded");
-    img.onerror = () => console.log(src + " FAILED");
-
+    img.onerror = () => console.log("FAILED:", src);
+    img.onload = () => console.log("LOADED:", src);
     return img;
 }
 
-const wizard = loadImage("assets/wizard.png");
-const skeleton = loadImage("assets/skeleton.png");
-const tiles = loadImage("assets/tiles.png");
+const wizard = load("assets/wizard.png");
+const skeleton = load("assets/skeleton.png");
+const tiles = load("assets/tiles.png");
 
 // ===== PLAYER =====
 let player = {
@@ -24,7 +22,6 @@ let player = {
     dir: 1
 };
 
-// ===== STATE =====
 let keys = {};
 let enemies = [];
 let bullets = [];
@@ -35,28 +32,28 @@ document.addEventListener("keydown", e => keys[e.key]=true);
 document.addEventListener("keyup", e => keys[e.key]=false);
 
 canvas.addEventListener("mousemove", e=>{
-    const r = canvas.getBoundingClientRect();
+    let r = canvas.getBoundingClientRect();
     mouse.x = e.clientX - r.left;
     mouse.y = e.clientY - r.top;
 });
 
 canvas.addEventListener("click", shoot);
 
-// ===== SHOOT =====
+// SHOOT
 function shoot(){
-    const dx = mouse.x - player.x;
-    const dy = mouse.y - player.y;
-    const dist = Math.hypot(dx,dy) || 1;
+    let dx = mouse.x - player.x;
+    let dy = mouse.y - player.y;
+    let d = Math.hypot(dx,dy)||1;
 
     bullets.push({
         x: player.x,
         y: player.y - 10,
-        dx: dx/dist * 6,
-        dy: dy/dist * 6
+        dx: dx/d * 6,
+        dy: dy/d * 6
     });
 }
 
-// ===== SPAWN =====
+// SPAWN
 function spawn(){
     enemies = [];
     for(let i=0;i<5;i++){
@@ -69,26 +66,22 @@ function spawn(){
 }
 spawn();
 
-// ===== UPDATE =====
+// UPDATE
 function update(){
 
-    let moveX = 0;
-    let moveY = 0;
+    let mx=0,my=0;
 
-    if(keys["w"]) moveY -= 1;
-    if(keys["s"]) moveY += 1;
-    if(keys["a"]){ moveX -= 1; player.dir = -1; }
-    if(keys["d"]){ moveX += 1; player.dir = 1; }
+    if(keys["w"]) my--;
+    if(keys["s"]) my++;
+    if(keys["a"]){ mx--; player.dir=-1; }
+    if(keys["d"]){ mx++; player.dir=1; }
 
-    const mag = Math.hypot(moveX, moveY) || 1;
-    moveX /= mag;
-    moveY /= mag;
+    let m = Math.hypot(mx,my)||1;
+    mx/=m;
+    my/=m;
 
-    player.x += moveX * player.speed;
-    player.y += moveY * player.speed;
-
-    player.x = Math.max(32, Math.min(canvas.width-32, player.x));
-    player.y = Math.max(32, Math.min(canvas.height-32, player.y));
+    player.x += mx*player.speed;
+    player.y += my*player.speed;
 
     bullets.forEach(b=>{
         b.x += b.dx;
@@ -96,19 +89,19 @@ function update(){
     });
 
     enemies.forEach(e=>{
-        const dx = player.x - e.x;
-        const dy = player.y - e.y;
-        const d = Math.hypot(dx,dy)||1;
+        let dx = player.x - e.x;
+        let dy = player.y - e.y;
+        let d = Math.hypot(dx,dy)||1;
 
-        e.x += (dx/d) * e.speed;
-        e.y += (dy/d) * e.speed;
+        e.x += dx/d * e.speed;
+        e.y += dy/d * e.speed;
     });
 
     bullets.forEach(b=>{
         enemies.forEach(e=>{
             if(Math.hypot(b.x-e.x,b.y-e.y)<20){
-                e.dead = true;
-                b.dead = true;
+                e.dead=true;
+                b.dead=true;
             }
         });
     });
@@ -116,60 +109,51 @@ function update(){
     bullets = bullets.filter(b=>!b.dead);
     enemies = enemies.filter(e=>!e.dead);
 
-    if(enemies.length === 0) spawn();
+    if(enemies.length===0) spawn();
 }
 
-// ===== DRAW MAP =====
+// DRAW FLOOR
 function drawMap(){
-    for(let x=0;x<canvas.width;x+=32){
-        for(let y=0;y<canvas.height;y+=32){
-            if(tiles.complete){
-                ctx.drawImage(tiles,x,y,32,32);
-            }
+    for(let x=0; x<canvas.width; x+=32){
+        for(let y=0; y<canvas.height; y+=32){
+            ctx.drawImage(tiles, x, y, 32, 32);
         }
     }
 }
 
-// ===== DRAW PLAYER =====
+// DRAW PLAYER
 function drawPlayer(){
-    const w = 48;
-    const h = 48;
+    let w=48,h=48;
 
     ctx.fillStyle="rgba(0,0,0,0.3)";
     ctx.beginPath();
-    ctx.ellipse(player.x, player.y+14, 14, 5, 0, 0, Math.PI*2);
+    ctx.ellipse(player.x,player.y+14,14,5,0,0,Math.PI*2);
     ctx.fill();
 
-    if(wizard.complete){
-        if(player.dir === -1){
-            ctx.save();
-            ctx.scale(-1,1);
-            ctx.drawImage(wizard, -player.x-w/2, player.y-h, w, h);
-            ctx.restore();
-        } else {
-            ctx.drawImage(wizard, player.x-w/2, player.y-h, w, h);
-        }
+    if(player.dir===-1){
+        ctx.save();
+        ctx.scale(-1,1);
+        ctx.drawImage(wizard,-player.x-w/2,player.y-h,w,h);
+        ctx.restore();
+    } else {
+        ctx.drawImage(wizard,player.x-w/2,player.y-h,w,h);
     }
 }
 
-// ===== DRAW ENEMY =====
+// DRAW ENEMY
 function drawEnemy(e){
-    const w = 28;
-    const h = 48;
+    let w=28,h=48;
 
     ctx.fillStyle="rgba(0,0,0,0.3)";
     ctx.beginPath();
-    ctx.ellipse(e.x, e.y+14, 12, 5, 0, 0, Math.PI*2);
+    ctx.ellipse(e.x,e.y+14,12,5,0,0,Math.PI*2);
     ctx.fill();
 
-    if(skeleton.complete){
-        ctx.drawImage(skeleton, e.x-w/2, e.y-h/2, w, h);
-    }
+    ctx.drawImage(skeleton,e.x-w/2,e.y-h/2,w,h);
 }
 
-// ===== DRAW =====
+// DRAW
 function draw(){
-
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
     drawMap();
