@@ -98,6 +98,7 @@ function spawnRoom() {
       x: canvas.width / 2,
       y: 140,
       hp: 320 + deathCount * 15,
+      maxHp: 320 + deathCount * 15,
       cd: 1
     };
     return;
@@ -131,6 +132,15 @@ function handleDeath() {
   spawnRoom();
 }
 
+/* ---------- SHOP PURCHASE ---------- */
+function buyItem(item) {
+  if (player.gold >= item.cost) {
+    player.gold -= item.cost;
+    player.equip[item.slot] = item;
+    shopOpen = false;
+  }
+}
+
 /* ---------- UPDATE ---------- */
 function update(dt) {
   const click = mouse.click;
@@ -144,7 +154,7 @@ function update(dt) {
 
   /* World movement */
   if (worldTransitionCD > 0) worldTransitionCD -= dt;
-  if (worldTransitionCD <= 0) {
+  if (worldTransitionCD <= 0 && !shopOpen) {
     if (keys.arrowup) { world.y--; worldTransitionCD = ROOM_TRANSITION_COOLDOWN; spawnRoom(); }
     if (keys.arrowdown) { world.y++; worldTransitionCD = ROOM_TRANSITION_COOLDOWN; spawnRoom(); }
     if (keys.arrowleft) { world.x--; worldTransitionCD = ROOM_TRANSITION_COOLDOWN; spawnRoom(); }
@@ -158,9 +168,13 @@ function update(dt) {
   player.x += (mx / mag) * player.speed * dt;
   player.y += (my / mag) * player.speed * dt;
 
+  /* Clamp player to canvas */
+  player.x = Math.max(PLAYER_RADIUS, Math.min(canvas.width - PLAYER_RADIUS, player.x));
+  player.y = Math.max(PLAYER_RADIUS, Math.min(canvas.height - PLAYER_RADIUS, player.y));
+
   /* Shooting */
   if (player.shootCD > 0) player.shootCD -= dt;
-  if (mouse.down && player.shootCD <= 0) {
+  if (mouse.down && player.shootCD <= 0 && !shopOpen) {
     const a = Math.atan2(mouse.y - player.y, mouse.x - player.x);
     const dmg = player.baseDmg + (player.equip.weapon?.dmg || 0);
     bullets.push({
@@ -194,6 +208,20 @@ function update(dt) {
       e.hitCD = ENEMY_HIT_COOLDOWN;
     }
 
+    /* Enemy shooting */
+    if (e.shootCD <= 0) {
+      const ang = Math.atan2(player.y - e.y, player.x - e.x);
+      enemyBullets.push({
+        x: e.x,
+        y: e.y,
+        dx: Math.cos(ang) * 5,
+        dy: Math.sin(ang) * 5,
+        dmg: 3,
+        used: false
+      });
+      e.shootCD = ENEMY_SHOOT_COOLDOWN;
+    }
+
     if (e.hp <= 0) {
       loot.push({ x: e.x, y: e.y, gold: 5 + Math.floor(deathCount * 1.5) });
       return false;
@@ -217,7 +245,7 @@ function update(dt) {
       b.used = true;
     }
   });
-  bullets = bullets.filter(b => !b.used);
+  bullets = bullets.filter(b => !b.used && b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20);
 
   /* Boss fight */
   if (boss) {
@@ -236,6 +264,10 @@ function update(dt) {
       }
       boss.cd = 1;
     }
+    if (boss.hp <= 0) {
+      loot.push({ x: boss.x, y: boss.y, gold: 50 + deathCount * 10 });
+      boss = null;
+    }
   }
 
   /* Enemy bullets */
@@ -248,7 +280,7 @@ function update(dt) {
       b.used = true;
     }
   });
-  enemyBullets = enemyBullets.filter(b => !b.used);
+  enemyBullets = enemyBullets.filter(b => !b.used && b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20);
 
   /* Loot pickup */
   loot = loot.filter(l => {
@@ -262,12 +294,19 @@ function update(dt) {
   if (player.hp <= 0 && deathFade <= 0) deathFade = 1;
 
   /* NPC interaction */
-  if (click) {
+  if (click && !shopOpen) {
     for (const npc of NPCS) {
       if (Math.hypot(mouse.x - npc.x, mouse.y - npc.y) < 40) {
         activeNPC = npc;
-        shopOpen = !shopOpen;
+        shopOpen = true;
       }
+    }
+  }
+
+  /* Close shop on click outside */
+  if (click && shopOpen) {
+    if (mouse.x < 250 || mouse.x > 550 || mouse.y < 50 || mouse.y > 350) {
+      shopOpen = false;
     }
   }
 }
@@ -336,7 +375,11 @@ function draw() {
   });
 
   ctx.fillStyle = "yellow";
-  bullets.forEach(b => ctx.beginPath(), ctx.arc(b.x, b.y, 3, 0, Math.PI * 2), ctx.fill());
+  bullets.forEach(b => {
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 3, 0, Math.PI * 2);
+    ctx.fill();
+  });
 
   ctx.fillStyle = "#ff3333";
   enemyBullets.forEach(b => ctx.fillRect(b.x - 3, b.y - 3, 6, 6));
@@ -356,6 +399,11 @@ function draw() {
     ctx.stroke();
     ctx.fillStyle = "#fff";
     ctx.fillText("BOSS", -16, 4);
+    /* Boss health bar */
+    ctx.fillStyle = "red";
+    ctx.fillRect(-BOSS_RADIUS, BOSS_RADIUS + 10, (boss.hp / boss.maxHp) * BOSS_RADIUS * 2, 4);
+    ctx.strokeStyle = "#fff";
+    ctx.strokeRect(-BOSS_RADIUS, BOSS_RADIUS + 10, BOSS_RADIUS * 2, 4);
     ctx.restore();
   }
 
@@ -372,10 +420,34 @@ function draw() {
   ctx.fillText("Deaths: " + deathCount, 20, 90);
 
   if (shopOpen && activeNPC) {
-    ctx.fillStyle = "rgba(0,0,0,0.8)";
+    ctx.fillStyle = "rgba(0,0,0,0.9)";
     ctx.fillRect(250, 50, 300, 300);
+    ctx.strokeStyle = "#ffb347";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(250, 50, 300, 300);
     ctx.fillStyle = "white";
+    ctx.font = "bold 16px Arial";
     ctx.fillText(activeNPC.name + "'s Shop", 270, 75);
+    
+    ctx.font = "14px Arial";
+    let yOffset = 100;
+    activeNPC.shop.forEach((item, idx) => {
+      const canAfford = player.gold >= item.cost;
+      ctx.fillStyle = canAfford ? "#fff" : "#888";
+      ctx.fillText(`${idx + 1}. ${item.name} - ${item.cost}g`, 270, yOffset);
+      
+      /* Highlight equipped item */
+      if (player.equip[item.slot] === item) {
+        ctx.fillStyle = "#ffff00";
+        ctx.fillText("✓", 510, yOffset);
+      }
+      
+      yOffset += 25;
+    });
+
+    ctx.fillStyle = "#aaa";
+    ctx.font = "12px Arial";
+    ctx.fillText("Click item to buy (click outside to close)", 260, 330);
   }
 
   if (deathFade > 0) {
@@ -383,6 +455,31 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 }
+
+/* ---------- SHOP CLICK HANDLING ---------- */
+canvas.addEventListener("click", e => {
+  if (!shopOpen || !activeNPC) return;
+  
+  const r = canvas.getBoundingClientRect();
+  const x = e.clientX - r.left;
+  const y = e.clientY - r.top;
+  
+  let yOffset = 100;
+  activeNPC.shop.forEach((item, idx) => {
+    const hitbox = {
+      x1: 270,
+      x2: 510,
+      y1: yOffset - 12,
+      y2: yOffset + 8
+    };
+    
+    if (x >= hitbox.x1 && x <= hitbox.x2 && y >= hitbox.y1 && y <= hitbox.y2) {
+      buyItem(item);
+    }
+    
+    yOffset += 25;
+  });
+});
 
 /* ---------- LOOP ---------- */
 let last = 0;
