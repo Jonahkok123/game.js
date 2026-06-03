@@ -1,11 +1,11 @@
 /* =====================================================
-   INTO DARKNESS — STABILITY & LOGIC FIX (FINAL)
+   INTO DARKNESS — CORRECTNESS & STABILITY PATCH
    ===================================================== */
 
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 
-// ------------------ CANVAS SAFETY ------------------
+/* ================= CANVAS ================= */
 function resize() {
   canvas.width = window.innerWidth || 800;
   canvas.height = window.innerHeight || 600;
@@ -13,14 +13,14 @@ function resize() {
 window.addEventListener("resize", resize);
 resize();
 
-// ------------------ CONSTANTS ------------------
+/* ================= CONSTANTS ================= */
 const PLAYER_RADIUS = 12;
 const ENEMY_RADIUS = 12;
 const BULLET_RADIUS = 3;
 const PICKUP_RADIUS = 20;
 const HIT_COOLDOWN = 20;
 
-// ------------------ INPUT ------------------
+/* ================= INPUT ================= */
 let keys = {};
 let mouse = { x: 0, y: 0, down: false, click: false };
 
@@ -38,7 +38,7 @@ canvas.addEventListener("mousedown", () => {
 });
 canvas.addEventListener("mouseup", () => mouse.down = false);
 
-// ------------------ PLAYER ------------------
+/* ================= PLAYER ================= */
 const player = {
   x: 0, y: 0,
   hp: 150, maxHp: 150,
@@ -50,7 +50,7 @@ const player = {
   equip: { weapon: null, chest: null }
 };
 
-// ------------------ WORLD ------------------
+/* ================= WORLD ================= */
 let world = { x: 0, y: 0 };
 let enemies = [];
 let bullets = [];
@@ -59,20 +59,20 @@ let loot = [];
 let boss = null;
 let gameOver = false;
 
-// ------------------ ITEMS ------------------
+/* ================= ITEMS ================= */
 const WEAPONS = [
   { name: "Iron Sword", slot: "weapon", dmg: 3 },
-  { name: "Phoenix Staff", slot: "weapon", dmg: 5, fire: true }
+  { name: "Phoenix Staff", slot: "weapon", dmg: 4, fire: true }
 ];
 const ARMOUR = [
   { name: "Chainmail", slot: "chest", armour: 0.25 }
 ];
 
-// ------------------ NPCs ------------------
+/* ================= NPCs ================= */
 const blacksmith = { x: 200, y: 200, open: false };
-const enchanter = { x: 400, y: 200, open: false };
+const enchanter  = { x: 400, y: 200, open: false };
 
-// ------------------ SPAWN ------------------
+/* ================= SPAWN ================= */
 function spawnRoom() {
   enemies = [];
   bullets = [];
@@ -81,16 +81,17 @@ function spawnRoom() {
   boss = null;
   gameOver = false;
 
-  player.x = canvas.width / 2 + (Math.random() * 40 - 20);
-  player.y = canvas.height / 2 + (Math.random() * 40 - 20);
+  player.x = canvas.width / 2;
+  player.y = canvas.height / 2;
   player.hp = player.maxHp;
 
-  // Boss room reachable ✅
+  // Boss room
   if (world.y === -1) {
     boss = { x: canvas.width / 2, y: 140, hp: 300, phase: 1, cd: 60 };
     return;
   }
 
+  // Village
   if (world.x === 0 && world.y === 0) return;
 
   const difficulty = Math.abs(world.x) + Math.abs(world.y);
@@ -106,11 +107,11 @@ function spawnRoom() {
 }
 spawnRoom();
 
-// ------------------ UPDATE ------------------
+/* ================= UPDATE ================= */
 function update(dt) {
   if (gameOver) return;
 
-  // ---------- PLAYER MOVEMENT ----------
+  /* ---- PLAYER MOVE ---- */
   let mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
   let my = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   let m = Math.hypot(mx, my) || 1;
@@ -118,53 +119,49 @@ function update(dt) {
   player.x += mx / m * player.speed * dt;
   player.y += my / m * player.speed * dt;
 
-  // Bounds ✅
   player.x = Math.max(PLAYER_RADIUS, Math.min(canvas.width - PLAYER_RADIUS, player.x));
   player.y = Math.max(PLAYER_RADIUS, Math.min(canvas.height - PLAYER_RADIUS, player.y));
 
-  // ---------- SHOOTING ----------
+  /* ---- SHOOT ---- */
   let dmg = player.baseDmg + (player.equip.weapon?.dmg || 0);
 
   if (mouse.down && player.cooldown <= 0) {
     const dx = mouse.x - player.x;
     const dy = mouse.y - player.y;
-    const d = Math.hypot(dx, dy) || 1;
+    const a = Math.atan2(dy, dx);
 
     if (player.equip.weapon?.fire) {
-      // Phoenix Staff fire wave ✅
-      for (let i = -2; i <= 2; i++) {
-        const a = Math.atan2(dy, dx) + i * 0.2;
+      // Normalised Phoenix spread (not 5x damage)
+      for (let i = -1; i <= 1; i++) {
         bullets.push({
-          x: player.x, y: player.y,
-          dx: Math.cos(a) * 6,
-          dy: Math.sin(a) * 6,
-          dmg
+          x: player.x,
+          y: player.y,
+          dx: Math.cos(a + i * 0.15) * 6,
+          dy: Math.sin(a + i * 0.15) * 6,
+          dmg: dmg * 0.6
         });
       }
     } else {
       bullets.push({
-        x: player.x, y: player.y,
-        dx: dx / d * 8,
-        dy: dy / d * 8,
+        x: player.x,
+        y: player.y,
+        dx: Math.cos(a) * 8,
+        dy: Math.sin(a) * 8,
         dmg
       });
     }
-
     player.cooldown = 15;
   }
   if (player.cooldown > 0) player.cooldown -= dt;
 
-  // ---------- BULLETS ----------
   bullets.forEach(b => { b.x += b.dx * dt; b.y += b.dy * dt; });
-
-  // Despawn bullets ✅
   bullets = bullets.filter(b =>
     !b.dead &&
     b.x > -50 && b.x < canvas.width + 50 &&
     b.y > -50 && b.y < canvas.height + 50
   );
 
-  // ---------- ENEMY LOGIC ----------
+  /* ---- ENEMIES ---- */
   enemies.forEach(e => {
     if (e.hitCooldown > 0) e.hitCooldown--;
 
@@ -172,23 +169,20 @@ function update(dt) {
     let dy = player.y - e.y;
     let dist = Math.hypot(dx, dy) || 1;
 
-    // Move
     e.x += dx / dist * 1.2 * dt;
     e.y += dy / dist * 1.2 * dt;
 
-    // Enemy bounds ✅
     e.x = Math.max(ENEMY_RADIUS, Math.min(canvas.width - ENEMY_RADIUS, e.x));
     e.y = Math.max(ENEMY_RADIUS, Math.min(canvas.height - ENEMY_RADIUS, e.y));
 
-    // Damage with cooldown ✅
     if (dist < PLAYER_RADIUS + ENEMY_RADIUS && e.hitCooldown <= 0) {
-      const armour = player.equip.chest?.armour || 0;
+      const armour = Math.min(0.9, Math.max(0, player.equip.chest?.armour || 0));
       player.hp -= e.atk * (1 - armour);
       e.hitCooldown = HIT_COOLDOWN;
     }
   });
 
-  // ---------- BULLET HITS ----------
+  /* ---- BULLET HITS ---- */
   bullets.forEach(b => {
     enemies.forEach(e => {
       if (Math.hypot(b.x - e.x, b.y - e.y) < ENEMY_RADIUS) {
@@ -196,30 +190,32 @@ function update(dt) {
         b.dead = true;
       }
     });
-
-    // Boss bullet damage ✅
     if (boss && Math.hypot(b.x - boss.x, b.y - boss.y) < 30) {
       boss.hp -= b.dmg;
       b.dead = true;
     }
   });
 
-  // ---------- ENEMY DEATH & LOOT ----------
+  /* ---- ENEMY DEATH ---- */
   enemies = enemies.filter(e => {
     if (e.hp <= 0) {
       loot.push({
-        x: Math.min(canvas.width - 20, Math.max(20, e.x)),
-        y: Math.min(canvas.height - 20, Math.max(20, e.y)),
+        x: Math.max(20, Math.min(canvas.width - 20, e.x)),
+        y: Math.max(20, Math.min(canvas.height - 20, e.y)),
         gold: 2 + Math.floor(Math.random() * 6)
       });
       if (Math.random() < 0.25)
-        loot.push({ x: e.x + 8, y: e.y, item: WEAPONS[Math.floor(Math.random() * WEAPONS.length)] });
+        loot.push({
+          x: Math.max(20, Math.min(canvas.width - 20, e.x + 8)),
+          y: Math.max(20, Math.min(canvas.height - 20, e.y)),
+          item: WEAPONS[Math.floor(Math.random() * WEAPONS.length)]
+        });
       return false;
     }
     return true;
   });
 
-  // ---------- PICKUP ----------
+  /* ---- PICKUP ---- */
   loot = loot.filter(l => {
     if (Math.hypot(player.x - l.x, player.y - l.y) < PICKUP_RADIUS) {
       if (l.gold) player.gold += l.gold;
@@ -229,10 +225,11 @@ function update(dt) {
     return true;
   });
 
-  // ---------- BOSS LOGIC ----------
+  /* ---- BOSS ---- */
   if (boss) {
-    if (boss.hp < 200) boss.phase = 2;
-    if (boss.hp < 100) boss.phase = 3;
+    boss.phase = Math.max(1, Math.min(3,
+      boss.hp < 100 ? 3 : boss.hp < 200 ? 2 : 1
+    ));
 
     boss.cd--;
     if (boss.cd <= 0) {
@@ -241,7 +238,8 @@ function update(dt) {
       for (let i = 0; i < shots; i++) {
         const a = (Math.PI * 2 / shots) * i;
         enemyBullets.push({
-          x: boss.x, y: boss.y,
+          x: boss.x,
+          y: boss.y,
           dx: Math.cos(a) * 3,
           dy: Math.sin(a) * 3,
           dmg: 6
@@ -250,7 +248,6 @@ function update(dt) {
     }
   }
 
-  // Boss bullets hit player ✅
   enemyBullets.forEach(b => {
     b.x += b.dx * dt;
     b.y += b.dy * dt;
@@ -259,15 +256,19 @@ function update(dt) {
       b.dead = true;
     }
   });
-  enemyBullets = enemyBullets.filter(b => !b.dead);
+  enemyBullets = enemyBullets.filter(b =>
+    !b.dead &&
+    b.x > -50 && b.x < canvas.width + 50 &&
+    b.y > -50 && b.y < canvas.height + 50
+  );
 
-  // ---------- GAME OVER ✅ ----------
+  /* ---- GAME OVER ---- */
   if (player.hp <= 0) {
     gameOver = true;
-    setTimeout(() => spawnRoom(), 1000);
+    setTimeout(spawnRoom, 1000);
   }
 
-  // ---------- BOSS WIN ✅ ----------
+  /* ---- BOSS WIN ---- */
   if (boss && boss.hp <= 0) {
     world.y = 0;
     spawnRoom();
@@ -276,10 +277,12 @@ function update(dt) {
   mouse.click = false;
 }
 
-// ------------------ DRAW ------------------
+/* ================= DRAW ================= */
 function draw() {
   ctx.fillStyle = "#111";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  ctx.font = "14px Arial";
 
   // NPCs
   ctx.fillStyle = "orange";
@@ -313,6 +316,10 @@ function draw() {
   ctx.fillStyle = "purple";
   enemyBullets.forEach(b => ctx.fillRect(b.x - 3, b.y - 3, 6, 6));
 
+  // Loot
+  ctx.fillStyle = "gold";
+  loot.forEach(l => ctx.fillRect(l.x - 4, l.y - 4, 8, 8));
+
   // HUD
   ctx.fillStyle = "red";
   ctx.fillRect(20, 20, Math.max(0, (player.hp / player.maxHp) * 200), 8);
@@ -321,12 +328,11 @@ function draw() {
   ctx.fillText("Weapon: " + (player.equip.weapon?.name || "None"), 20, 70);
 
   if (gameOver) {
-    ctx.fillStyle = "white";
     ctx.fillText("YOU DIED", canvas.width / 2 - 30, canvas.height / 2);
   }
 }
 
-// ------------------ LOOP ------------------
+/* ================= LOOP ================= */
 let last = 0;
 function loop(t) {
   const dt = Math.min((t - last) / 16.6, 2);
