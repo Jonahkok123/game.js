@@ -1,344 +1,154 @@
-/* =====================================================
-   INTO DARKNESS — CORRECTNESS & STABILITY PATCH
-   ===================================================== */
+Detailed Bug List with Line Numbers and Code Context
+BUG #1: Early Return Skips Mouse Click Reset
+Lines: 112 and 277 Severity: High - Causes stuck shoot input after death
 
-const canvas = document.getElementById("c");
-const ctx = canvas.getContext("2d");
+JavaScript
+// Line 112
+if (gameOver) return;  // ← Returns early when dead
 
-/* ================= CANVAS ================= */
-function resize() {
-  canvas.width = window.innerWidth || 800;
-  canvas.height = window.innerHeight || 600;
+// ... rest of update code ...
+
+// Line 277
+mouse.click = false;  // ← This never executes when gameOver is true
+Problem: When gameOver is true, the function returns at line 112, so mouse.click = false at line 277 never runs. This means the mouse click persists into the next frame after respawn.
+
+Fix: Move the reset before the early return:
+
+JavaScript
+mouse.click = false;  // Move to line 113
+if (gameOver) return;
+BUG #2: Enemy Hit Cooldown Uses Frame-Based Decrement Instead of Time-Based
+Line: 166 Severity: Medium - Causes inconsistent enemy attack timing
+
+JavaScript
+enemies.forEach(e => {
+  if (e.hitCooldown > 0) e.hitCooldown--;  // ← Always decrements by 1 per frame
+Problem: This decrements by 1 per frame regardless of delta time. At 60 FPS it's ~16.6ms per decrement, but if framerate drops, enemies attack faster. Should use dt like player cooldown does at line 155.
+
+Fix:
+
+JavaScript
+if (e.hitCooldown > 0) e.hitCooldown -= dt;
+BUG #3: Boss Hit Collision Radius Mismatch
+Lines: 193 vs 310 Severity: Medium - Unfair collision detection
+
+JavaScript
+// Line 193 - Bullet collision check
+if (boss && Math.hypot(b.x - boss.x, b.y - boss.y) < 30) {
+
+// Line 310 - Boss drawing
+ctx.fillRect(boss.x - 24, boss.y - 24, 48, 48);  // ← 48×48 square, radius should be 24
+Problem: Boss is drawn as a 48×48 square (±24 pixels from center), but bullet collision uses radius 30. This creates an asymmetrical hit box that extends beyond the visual sprite.
+
+Fix:
+
+JavaScript
+if (boss && Math.hypot(b.x - boss.x, b.y - boss.y) < 24) {
+BUG #4: Single Bullet Can Damage Multiple Enemies
+Lines: 186-197 Severity: High - Bullets are overpowered
+
+JavaScript
+bullets.forEach(b => {
+  enemies.forEach(e => {
+    if (Math.hypot(b.x - e.x, b.y - e.y) < ENEMY_RADIUS) {
+      e.hp -= b.dmg;
+      b.dead = true;  // ← Marks as dead but doesn't exit inner loop
+    }
+  });
+  // Loop continues checking other enemies with same bullet
+Problem: The inner loop continues iterating after b.dead = true. A bullet can damage multiple enemies in the same frame before being filtered out.
+
+Fix: Add a break statement:
+
+JavaScript
+if (Math.hypot(b.x - e.x, b.y - e.y) < ENEMY_RADIUS) {
+  e.hp -= b.dmg;
+  b.dead = true;
+  break;  // ← Exit inner loop
 }
-window.addEventListener("resize", resize);
-resize();
+BUG #5: Unused Constant
+Line: 19 Severity: Low - Code cleanliness
 
-/* ================= CONSTANTS ================= */
-const PLAYER_RADIUS = 12;
-const ENEMY_RADIUS = 12;
-const BULLET_RADIUS = 3;
-const PICKUP_RADIUS = 20;
-const HIT_COOLDOWN = 20;
+JavaScript
+const BULLET_RADIUS = 3;  // ← Never used anywhere in code
+Problem: This constant is defined but bullets are drawn as 4×4 squares (line 315), not circles, and no collision detection uses this radius.
 
-/* ================= INPUT ================= */
-let keys = {};
-let mouse = { x: 0, y: 0, down: false, click: false };
+Fix: Remove the line or use it consistently:
 
-addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
-addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
+JavaScript
+// Remove line 19, or change bullet rendering to use it
+BUG #6: Undefined ARMOUR Array Never Used
+Lines: 67-69 Severity: Low - Dead code
 
-canvas.addEventListener("mousemove", e => {
-  const r = canvas.getBoundingClientRect();
-  mouse.x = e.clientX - r.left;
-  mouse.y = e.clientY - r.top;
-});
-canvas.addEventListener("mousedown", () => {
-  mouse.down = true;
-  mouse.click = true;
-});
-canvas.addEventListener("mouseup", () => mouse.down = false);
-
-/* ================= PLAYER ================= */
-const player = {
-  x: 0, y: 0,
-  hp: 150, maxHp: 150,
-  baseDmg: 6,
-  speed: 3,
-  gold: 0,
-  cooldown: 0,
-  hitCooldown: 0,
-  equip: { weapon: null, chest: null }
-};
-
-/* ================= WORLD ================= */
-let world = { x: 0, y: 0 };
-let enemies = [];
-let bullets = [];
-let enemyBullets = [];
-let loot = [];
-let boss = null;
-let gameOver = false;
-
-/* ================= ITEMS ================= */
-const WEAPONS = [
-  { name: "Iron Sword", slot: "weapon", dmg: 3 },
-  { name: "Phoenix Staff", slot: "weapon", dmg: 4, fire: true }
-];
+JavaScript
 const ARMOUR = [
   { name: "Chainmail", slot: "chest", armour: 0.25 }
-];
+];  // ← Defined but never used
+Problem: The ARMOUR array is never referenced. There's no shop or loot system that drops armor, so this data is unused.
 
-/* ================= NPCs ================= */
+Fix: Either implement an armor drop system or remove the definition.
+
+BUG #7: NPC Objects Have No Functionality
+Lines: 72-73 Severity: Low - Dead code
+
+JavaScript
 const blacksmith = { x: 200, y: 200, open: false };
 const enchanter  = { x: 400, y: 200, open: false };
+Problem: NPCs are drawn (lines 288-291) but have no collision detection, no shop, and their open property is never checked.
 
-/* ================= SPAWN ================= */
-function spawnRoom() {
-  enemies = [];
-  bullets = [];
-  enemyBullets = [];
-  loot = [];
-  boss = null;
-  gameOver = false;
+Fix: Either implement shop mechanics or remove NPC rendering.
 
-  player.x = canvas.width / 2;
-  player.y = canvas.height / 2;
-  player.hp = player.maxHp;
+BUG #8: No Null/Undefined Check for Canvas Element
+Lines: 5-6 Severity: High - Runtime crash if HTML is missing
 
-  // Boss room
-  if (world.y === -1) {
-    boss = { x: canvas.width / 2, y: 140, hp: 300, phase: 1, cd: 60 };
-    return;
+JavaScript
+const canvas = document.getElementById("c");
+const ctx = canvas.getContext("2d");  // ← Crashes if canvas is null
+Problem: If no element with ID "c" exists in the HTML, canvas is null and calling .getContext() throws: TypeError: Cannot read property 'getContext' of null
+
+Fix:
+
+JavaScript
+const canvas = document.getElementById("c");
+if (!canvas) throw new Error("Canvas element with id 'c' not found");
+const ctx = canvas.getContext("2d");
+BUG #9: Enemy Bullet Multiple Damage Per Frame
+Lines: 251-263 Severity: High - Enemy bullets deal inconsistent damage
+
+JavaScript
+enemyBullets.forEach(b => {
+  b.x += b.dx * dt;
+  b.y += b.dy * dt;
+  if (Math.hypot(b.x - player.x, b.y - player.y) < PLAYER_RADIUS) {
+    player.hp -= b.dmg;
+    b.dead = true;  // ← Marked dead but still in array during this iteration
   }
+});
+Problem: If multiple enemy bullets hit the player in the same frame, all collision checks run before filtering happens at line 259. The damage values stack before bullets are removed.
 
-  // Village
-  if (world.x === 0 && world.y === 0) return;
+Fix: Separate collision detection from damage application or use break equivalent:
 
-  const difficulty = Math.abs(world.x) + Math.abs(world.y);
-  for (let i = 0; i < 3 + difficulty; i++) {
-    enemies.push({
-      x: Math.random() * (canvas.width - 100) + 50,
-      y: Math.random() * (canvas.height - 100) + 50,
-      hp: 30 + difficulty * 5,
-      atk: 6 + difficulty,
-      hitCooldown: 0
-    });
+JavaScript
+enemyBullets.forEach(b => {
+  b.x += b.dx * dt;
+  b.y += b.dy * dt;
+  if (!b.dead && Math.hypot(b.x - player.x, b.y - player.y) < PLAYER_RADIUS) {
+    player.hp -= b.dmg;
+    b.dead = true;
   }
-}
-spawnRoom();
+});
+BUG #10: Health Bar HUD Has No Visual Border
+Line: 325 Severity: Low - UI clarity issue
 
-/* ================= UPDATE ================= */
-function update(dt) {
-  if (gameOver) return;
+JavaScript
+ctx.fillStyle = "red";
+ctx.fillRect(20, 20, Math.max(0, (player.hp / player.maxHp) * 200), 8);
+Problem: The health bar is a solid red rectangle. When HP reaches 0, it disappears completely with no visual indication. No border distinguishes it from the background.
 
-  /* ---- PLAYER MOVE ---- */
-  let mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
-  let my = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
-  let m = Math.hypot(mx, my) || 1;
+Fix:
 
-  player.x += mx / m * player.speed * dt;
-  player.y += my / m * player.speed * dt;
-
-  player.x = Math.max(PLAYER_RADIUS, Math.min(canvas.width - PLAYER_RADIUS, player.x));
-  player.y = Math.max(PLAYER_RADIUS, Math.min(canvas.height - PLAYER_RADIUS, player.y));
-
-  /* ---- SHOOT ---- */
-  let dmg = player.baseDmg + (player.equip.weapon?.dmg || 0);
-
-  if (mouse.down && player.cooldown <= 0) {
-    const dx = mouse.x - player.x;
-    const dy = mouse.y - player.y;
-    const a = Math.atan2(dy, dx);
-
-    if (player.equip.weapon?.fire) {
-      // Normalised Phoenix spread (not 5x damage)
-      for (let i = -1; i <= 1; i++) {
-        bullets.push({
-          x: player.x,
-          y: player.y,
-          dx: Math.cos(a + i * 0.15) * 6,
-          dy: Math.sin(a + i * 0.15) * 6,
-          dmg: dmg * 0.6
-        });
-      }
-    } else {
-      bullets.push({
-        x: player.x,
-        y: player.y,
-        dx: Math.cos(a) * 8,
-        dy: Math.sin(a) * 8,
-        dmg
-      });
-    }
-    player.cooldown = 15;
-  }
-  if (player.cooldown > 0) player.cooldown -= dt;
-
-  bullets.forEach(b => { b.x += b.dx * dt; b.y += b.dy * dt; });
-  bullets = bullets.filter(b =>
-    !b.dead &&
-    b.x > -50 && b.x < canvas.width + 50 &&
-    b.y > -50 && b.y < canvas.height + 50
-  );
-
-  /* ---- ENEMIES ---- */
-  enemies.forEach(e => {
-    if (e.hitCooldown > 0) e.hitCooldown--;
-
-    let dx = player.x - e.x;
-    let dy = player.y - e.y;
-    let dist = Math.hypot(dx, dy) || 1;
-
-    e.x += dx / dist * 1.2 * dt;
-    e.y += dy / dist * 1.2 * dt;
-
-    e.x = Math.max(ENEMY_RADIUS, Math.min(canvas.width - ENEMY_RADIUS, e.x));
-    e.y = Math.max(ENEMY_RADIUS, Math.min(canvas.height - ENEMY_RADIUS, e.y));
-
-    if (dist < PLAYER_RADIUS + ENEMY_RADIUS && e.hitCooldown <= 0) {
-      const armour = Math.min(0.9, Math.max(0, player.equip.chest?.armour || 0));
-      player.hp -= e.atk * (1 - armour);
-      e.hitCooldown = HIT_COOLDOWN;
-    }
-  });
-
-  /* ---- BULLET HITS ---- */
-  bullets.forEach(b => {
-    enemies.forEach(e => {
-      if (Math.hypot(b.x - e.x, b.y - e.y) < ENEMY_RADIUS) {
-        e.hp -= b.dmg;
-        b.dead = true;
-      }
-    });
-    if (boss && Math.hypot(b.x - boss.x, b.y - boss.y) < 30) {
-      boss.hp -= b.dmg;
-      b.dead = true;
-    }
-  });
-
-  /* ---- ENEMY DEATH ---- */
-  enemies = enemies.filter(e => {
-    if (e.hp <= 0) {
-      loot.push({
-        x: Math.max(20, Math.min(canvas.width - 20, e.x)),
-        y: Math.max(20, Math.min(canvas.height - 20, e.y)),
-        gold: 2 + Math.floor(Math.random() * 6)
-      });
-      if (Math.random() < 0.25)
-        loot.push({
-          x: Math.max(20, Math.min(canvas.width - 20, e.x + 8)),
-          y: Math.max(20, Math.min(canvas.height - 20, e.y)),
-          item: WEAPONS[Math.floor(Math.random() * WEAPONS.length)]
-        });
-      return false;
-    }
-    return true;
-  });
-
-  /* ---- PICKUP ---- */
-  loot = loot.filter(l => {
-    if (Math.hypot(player.x - l.x, player.y - l.y) < PICKUP_RADIUS) {
-      if (l.gold) player.gold += l.gold;
-      if (l.item) player.equip[l.item.slot] = l.item;
-      return false;
-    }
-    return true;
-  });
-
-  /* ---- BOSS ---- */
-  if (boss) {
-    boss.phase = Math.max(1, Math.min(3,
-      boss.hp < 100 ? 3 : boss.hp < 200 ? 2 : 1
-    ));
-
-    boss.cd--;
-    if (boss.cd <= 0) {
-      boss.cd = 60 - boss.phase * 10;
-      const shots = boss.phase * 6;
-      for (let i = 0; i < shots; i++) {
-        const a = (Math.PI * 2 / shots) * i;
-        enemyBullets.push({
-          x: boss.x,
-          y: boss.y,
-          dx: Math.cos(a) * 3,
-          dy: Math.sin(a) * 3,
-          dmg: 6
-        });
-      }
-    }
-  }
-
-  enemyBullets.forEach(b => {
-    b.x += b.dx * dt;
-    b.y += b.dy * dt;
-    if (Math.hypot(b.x - player.x, b.y - player.y) < PLAYER_RADIUS) {
-      player.hp -= b.dmg;
-      b.dead = true;
-    }
-  });
-  enemyBullets = enemyBullets.filter(b =>
-    !b.dead &&
-    b.x > -50 && b.x < canvas.width + 50 &&
-    b.y > -50 && b.y < canvas.height + 50
-  );
-
-  /* ---- GAME OVER ---- */
-  if (player.hp <= 0) {
-    gameOver = true;
-    setTimeout(spawnRoom, 1000);
-  }
-
-  /* ---- BOSS WIN ---- */
-  if (boss && boss.hp <= 0) {
-    world.y = 0;
-    spawnRoom();
-  }
-
-  mouse.click = false;
-}
-
-/* ================= DRAW ================= */
-function draw() {
-  ctx.fillStyle = "#111";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-  ctx.font = "14px Arial";
-
-  // NPCs
-  ctx.fillStyle = "orange";
-  ctx.fillRect(blacksmith.x - 10, blacksmith.y - 20, 20, 40);
-  ctx.fillStyle = "purple";
-  ctx.fillRect(enchanter.x - 10, enchanter.y - 20, 20, 40);
-
-  // Player
-  ctx.fillStyle = player.equip.weapon?.fire ? "orange" : "white";
-  ctx.beginPath();
-  ctx.arc(player.x, player.y, PLAYER_RADIUS, 0, Math.PI * 2);
-  ctx.fill();
-
-  // Enemies
-  ctx.fillStyle = "red";
-  enemies.forEach(e => {
-    ctx.beginPath();
-    ctx.arc(e.x, e.y, ENEMY_RADIUS, 0, Math.PI * 2);
-    ctx.fill();
-  });
-
-  // Boss
-  if (boss) {
-    ctx.fillStyle = ["orange", "crimson", "gold"][boss.phase - 1];
-    ctx.fillRect(boss.x - 24, boss.y - 24, 48, 48);
-  }
-
-  // Bullets
-  ctx.fillStyle = "yellow";
-  bullets.forEach(b => ctx.fillRect(b.x - 2, b.y - 2, 4, 4));
-  ctx.fillStyle = "purple";
-  enemyBullets.forEach(b => ctx.fillRect(b.x - 3, b.y - 3, 6, 6));
-
-  // Loot
-  ctx.fillStyle = "gold";
-  loot.forEach(l => ctx.fillRect(l.x - 4, l.y - 4, 8, 8));
-
-  // HUD
-  ctx.fillStyle = "red";
-  ctx.fillRect(20, 20, Math.max(0, (player.hp / player.maxHp) * 200), 8);
-  ctx.fillStyle = "white";
-  ctx.fillText("Gold: " + player.gold, 20, 50);
-  ctx.fillText("Weapon: " + (player.equip.weapon?.name || "None"), 20, 70);
-
-  if (gameOver) {
-    ctx.fillText("YOU DIED", canvas.width / 2 - 30, canvas.height / 2);
-  }
-}
-
-/* ================= LOOP ================= */
-let last = 0;
-function loop(t) {
-  const dt = Math.min((t - last) / 16.6, 2);
-  last = t;
-  update(dt);
-  draw();
-  requestAnimationFrame(loop);
-}
-requestAnimationFrame(loop);
+JavaScript
+ctx.fillStyle = "red";
+ctx.fillRect(20, 20, Math.max(0, (player.hp / player.maxHp) * 200), 8);
+ctx.strokeStyle = "white";
+ctx.strokeRect(20, 20, 200, 8);  // ← Add border
