@@ -1,14 +1,31 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Into Darkness</title>
+  <meta charset="utf-8">
+  <title>Into Darkness</title>
+
+  <!-- Mobile & scaling support -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
 </head>
-<body style="margin:0; overflow:hidden; background:black;">
+<body>
 
-<canvas id="c" width="1200" height="700"></canvas>
+  <!-- Canvas (size handled by JS) -->
+  <canvas id="c"></canvas>
 
-<script src="game.js"></script>
+  <!-- Game code -->
+  <script src="game.js"></script>
 
 </body>
 </html>
-``
