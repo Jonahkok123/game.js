@@ -17,11 +17,13 @@ resize();
 /* ---------- CONSTANTS ---------- */
 const PLAYER_RADIUS = 12;
 const ENEMY_RADIUS = 12;
+const BOSS_RADIUS = 24;
 const PICKUP_RADIUS = 20;
 const ENEMY_HIT_COOLDOWN = 0.4;
 const PLAYER_SHOOT_COOLDOWN = 0.25;
 const DEATH_GOLD_PENALTY = 4;
 const ENEMY_SHOOT_COOLDOWN = 1.5;
+const ROOM_TRANSITION_COOLDOWN = 0.2;
 
 /* ---------- INPUT ---------- */
 let keys = {};
@@ -70,6 +72,7 @@ let shopOpen = false;
 
 /* ---------- WORLD ---------- */
 let world = { x: 0, y: 0 };
+let worldTransitionCD = 0;
 let enemies = [];
 let bullets = [];
 let enemyBullets = [];
@@ -159,12 +162,29 @@ function update(dt) {
   player.y = Math.max(PLAYER_RADIUS, Math.min(canvas.height - PLAYER_RADIUS, player.y));
 
   /* ---- WORLD NAVIGATION ---- */
-  if (keys.arrowup) world.y--;
-  if (keys.arrowdown) world.y++;
-  if (keys.arrowleft) world.x--;
-  if (keys.arrowright) world.x++;
-  if (keys.arrowup || keys.arrowdown || keys.arrowleft || keys.arrowright) {
-    spawnRoom();
+  if (worldTransitionCD > 0) worldTransitionCD -= dt;
+
+  if (worldTransitionCD <= 0) {
+    if (keys.arrowup) {
+      world.y--;
+      worldTransitionCD = ROOM_TRANSITION_COOLDOWN;
+      spawnRoom();
+    }
+    if (keys.arrowdown) {
+      world.y++;
+      worldTransitionCD = ROOM_TRANSITION_COOLDOWN;
+      spawnRoom();
+    }
+    if (keys.arrowleft) {
+      world.x--;
+      worldTransitionCD = ROOM_TRANSITION_COOLDOWN;
+      spawnRoom();
+    }
+    if (keys.arrowright) {
+      world.x++;
+      worldTransitionCD = ROOM_TRANSITION_COOLDOWN;
+      spawnRoom();
+    }
   }
 
   /* ---- SHOOT ---- */
@@ -251,7 +271,7 @@ function update(dt) {
       }
     }
 
-    if (boss && Math.hypot(b.x - boss.x, b.y - boss.y) < ENEMY_RADIUS) {
+    if (boss && Math.hypot(b.x - boss.x, b.y - boss.y) < BOSS_RADIUS) {
       boss.hp -= b.dmg;
       b.used = true;
     }
@@ -277,9 +297,7 @@ function update(dt) {
     }
   });
 
-  enemies = enemies.filter(e => e.hp > 0);
-
-  // Drop loot on enemy death
+  /* ---- DROP LOOT BEFORE FILTERING ---- */
   enemies.forEach(e => {
     if (e.hp <= 0) {
       loot.push({
@@ -288,6 +306,8 @@ function update(dt) {
       });
     }
   });
+
+  enemies = enemies.filter(e => e.hp > 0);
 
   /* ---- BOSS FIGHT ---- */
   if (boss) {
@@ -329,18 +349,18 @@ function update(dt) {
     deathFade = 1;
   }
 
-  /* ---- NPC INTERACTION ---- */
+  /* ---- NPC INTERACTION (OPEN/CLOSE SHOP) ---- */
   if (click) {
-    activeNPC = null;
     for (const npc of NPCS) {
       if (Math.hypot(mouse.x - npc.x, mouse.y - npc.y) < 40) {
         activeNPC = npc;
         shopOpen = !shopOpen;
+        return;  // Only interact with one NPC per click
       }
     }
   }
 
-  /* ---- SHOP PURCHASING ---- */
+  /* ---- SHOP PURCHASING (ADD TO INVENTORY) ---- */
   if (shopOpen && activeNPC && click) {
     for (let i = 0; i < activeNPC.shop.length; i++) {
       const item = activeNPC.shop[i];
@@ -349,8 +369,8 @@ function update(dt) {
       if (mouse.x > slotX && mouse.x < slotX + 80 && mouse.y > slotY && mouse.y < slotY + 40) {
         if (player.gold >= item.cost) {
           player.gold -= item.cost;
-          player.equip[item.slot] = item;
-          shopOpen = false;
+          inventory.push(item);  // Add to inventory
+          return;  // One purchase per click
         }
       }
     }
@@ -417,7 +437,7 @@ function draw() {
   if (boss) {
     ctx.fillStyle = "purple";
     ctx.beginPath();
-    ctx.arc(boss.x, boss.y, ENEMY_RADIUS * 2, 0, Math.PI * 2);
+    ctx.arc(boss.x, boss.y, BOSS_RADIUS, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = "white";
     ctx.fillText("BOSS", boss.x - 15, boss.y);
@@ -432,6 +452,7 @@ function draw() {
   ctx.fillText("Gold: " + player.gold, 20, 50);
   ctx.fillText("Room: (" + world.x + ", " + world.y + ")", 20, 70);
   ctx.fillText("Deaths: " + deathCount, 20, 90);
+  ctx.fillText("Inventory: " + inventory.length, 20, 110);
 
   // Shop
   if (shopOpen && activeNPC) {
