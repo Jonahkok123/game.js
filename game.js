@@ -1,4 +1,4 @@
-// ===== INTO DARKNESS - Sprite Sheet Animation Version =====
+// ===== INTO DARKNESS - With Asset Error Handling =====
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -8,24 +8,49 @@ ctx.imageSmoothingEnabled = false;
 let frame = 0;
 let gameState = "selecting";
 let playerClass = "wizard";
+let assetsLoaded = false;
+let assetErrors = [];
 
 window.addEventListener("resize", () => {
   canvas.width = window.innerWidth;
   canvas.height = window.innerHeight;
 });
 
-// ===== LOAD ASSETS =====
+// ===== LOAD ASSETS WITH ERROR HANDLING =====
 let loaded = 0;
-function load(src) {
+let totalAssets = 3;
+
+function loadImage(src, name) {
   const img = new Image();
   img.src = src;
-  img.onload = () => loaded++;
+  
+  img.onload = () => {
+    loaded++;
+    checkLoading();
+  };
+  
+  img.onerror = () => {
+    console.warn(`Failed to load asset: ${name} (${src})`);
+    assetErrors.push(name);
+    loaded++; // Still count it so game doesn't get stuck
+    checkLoading();
+  };
+  
   return img;
 }
 
-const wizardSheet = load("assets/wizard_sheet.png");
-const skeletonSheet = load("assets/skeleton_sheet.png");
-const tiles = load("assets/tiles.png");
+function checkLoading() {
+  if (loaded >= totalAssets) {
+    assetsLoaded = true;
+    if (assetErrors.length > 0) {
+      console.log("Some assets failed to load:", assetErrors);
+    }
+  }
+}
+
+const wizardSheet = loadImage("assets/wizard_sheet.png", "wizard_sheet");
+const skeletonSheet = loadImage("assets/skeleton_sheet.png", "skeleton_sheet");
+const tiles = loadImage("assets/tiles.png", "tiles");
 
 // ===== GAME STATE =====
 let currentSpell = "fire";
@@ -63,7 +88,7 @@ function selectClass(cls) {
   } else if (cls === "warrior") {
     player.hp = 150; player.maxHp = 150; player.mana = 0; player.speed = 2.7;
   } else if (cls === "archer") {
-    player.hp = 105; player.maxHp = 105; patient.mana = 70; player.speed = 3.9;
+    player.hp = 105; player.maxHp = 105; player.mana = 70; player.speed = 3.9;
   }
 
   player.x = canvas.width / 2;
@@ -167,7 +192,6 @@ function update() {
   if (gameState !== "playing") return;
   frame++;
 
-  // Movement
   let mx = 0, my = 0;
   if (keys["w"] || keys["W"]) my--;
   if (keys["s"] || keys["S"]) my++;
@@ -186,7 +210,6 @@ function update() {
   player.x = Math.max(40, Math.min(canvas.width - 40, player.x));
   player.y = Math.max(40, Math.min(canvas.height - 40, player.y));
 
-  // Animation logic
   const isMoving = mx !== 0 || my !== 0;
 
   if (player.anim === "attack") {
@@ -212,13 +235,11 @@ function update() {
     player.mana = Math.min(100, player.mana + 0.1);
   }
 
-  // Bullets
   bullets.forEach(b => {
     b.x += b.dx;
     b.y += b.dy;
   });
 
-  // Enemies
   enemies.forEach(e => {
     if (e.stun > 0) { e.stun--; return; }
     const dx = player.x - e.x;
@@ -230,12 +251,9 @@ function update() {
     if (Math.hypot(player.x - e.x, player.y - e.y) < 25) {
       player.hp -= 0.25;
     }
-
-    // Simple enemy animation
     e.animFrame = (e.animFrame + 1) % 8;
   });
 
-  // Bullet collision
   bullets.forEach(b => {
     enemies.forEach(e => {
       if (Math.hypot(b.x - e.x, b.y - e.y) < 20) {
@@ -250,7 +268,6 @@ function update() {
   bullets = bullets.filter(b => !b.dead);
   enemies = enemies.filter(e => e.hp > 0);
 
-  // Doors
   if (enemies.length === 0 && doors.length === 0) {
     doors.push({ x: canvas.width / 2, y: 45 });
     doors.push({ x: canvas.width / 2, y: canvas.height - 45 });
@@ -276,9 +293,18 @@ function update() {
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  if (loaded < 3) {
+  // Show loading or errors
+  if (!assetsLoaded) {
     ctx.fillStyle = "white";
+    ctx.font = "24px sans-serif";
     ctx.fillText("Loading...", 200, 200);
+
+    if (assetErrors.length > 0) {
+      ctx.fillStyle = "#ff6666";
+      ctx.font = "16px sans-serif";
+      ctx.fillText("Missing assets: " + assetErrors.join(", "), 200, 240);
+      ctx.fillText("Please upload wizard_sheet.png and skeleton_sheet.png to assets/", 200, 265);
+    }
     return;
   }
 
@@ -286,35 +312,41 @@ function draw() {
   ctx.fillStyle = "#1a1a1a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Simple tile background
-  ctx.drawImage(tiles, 0, 0, canvas.width, canvas.height);
+  // Draw tiles if loaded
+  if (tiles.complete) {
+    ctx.drawImage(tiles, 0, 0, canvas.width, canvas.height);
+  }
 
-  // ===== PLAYER ANIMATION =====
+  // ===== PLAYER =====
   const isMoving = keys["w"] || keys["s"] || keys["a"] || keys["d"];
-  let animName = player.anim;
-
-  // Choose frame row based on animation
   let row = 0;
-  if (animName === "idle") row = 0;
-  if (animName === "walk") row = 1;
-  if (animName === "attack") row = 3;
+  if (player.anim === "idle") row = 0;
+  if (player.anim === "walk") row = 1;
+  if (player.anim === "attack") row = 3;
 
   const frameW = 48;
   const frameH = 64;
-  const sx = player.animFrame * frameW;
-  const sy = row * frameH;
 
-  ctx.drawImage(
-    wizardSheet,
-    sx, sy, frameW, frameH,
-    player.x - 24, player.y - 48, 48, 64
-  );
+  if (wizardSheet.complete && wizardSheet.width > 0) {
+    const sx = player.animFrame * frameW;
+    const sy = row * frameH;
+    ctx.drawImage(wizardSheet, sx, sy, frameW, frameH, player.x - 24, player.y - 48, 48, 64);
+  } else {
+    // Fallback if wizard sheet missing
+    ctx.fillStyle = playerClass === "warrior" ? "#cc5533" : playerClass === "archer" ? "#44aa55" : "#4455cc";
+    ctx.fillRect(player.x - 20, player.y - 40, 40, 60);
+  }
 
   // Enemies
   enemies.forEach(e => {
     const size = e.isBoss ? 56 : 36;
-    const ex = Math.floor(e.animFrame % 6) * 32;
-    ctx.drawImage(skeletonSheet, ex, 0, 32, 48, e.x - size/2, e.y - size/2, size, size);
+    if (skeletonSheet.complete && skeletonSheet.width > 0) {
+      const ex = Math.floor(e.animFrame % 6) * 32;
+      ctx.drawImage(skeletonSheet, ex, 0, 32, 48, e.x - size/2, e.y - size/2, size, size);
+    } else {
+      ctx.fillStyle = "#aaffaa";
+      ctx.fillRect(e.x - size/2, e.y - size/2, size, size);
+    }
   });
 
   // Bullets
@@ -342,6 +374,15 @@ function draw() {
   ctx.fillText("Level: " + level, 20, 65);
   ctx.fillText("Class: " + playerClass.toUpperCase(), 20, 85);
   ctx.fillText("Score: " + score, 20, 105);
+
+  // Show missing assets warning
+  if (assetErrors.length > 0) {
+    ctx.fillStyle = "rgba(255,100,100,0.8)";
+    ctx.fillRect(20, canvas.height - 50, 400, 35);
+    ctx.fillStyle = "white";
+    ctx.font = "14px sans-serif";
+    ctx.fillText("Missing: " + assetErrors.join(", ") + " (check assets folder)", 30, canvas.height - 30);
+  }
 }
 
 // Game Loop
