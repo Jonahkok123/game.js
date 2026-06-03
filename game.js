@@ -1,332 +1,259 @@
+document.addEventListener("click", () => {
+  if (AudioCtx.state === "suspended") {
+    AudioCtx.resume();
+  }
+}, { once: true });
+
+/* ==========================================================
+   FULL ROGUELIKE CANVAS GAME — ROOMS, BOSS, AUDIO, MOBILE
+   ========================================================== */
+
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
 
-// ===== LOAD =====
-let loaded=0;
-function load(src){
-  const img = new Image();
-  img.src = src;
-  img.onload = ()=>loaded++;
-  return img;
+/* ===================== SETUP ===================== */
+function resize() {
+  canvas.width = innerWidth;
+  canvas.height = innerHeight;
+}
+addEventListener("resize", resize);
+resize();
+
+const TAU = Math.PI * 2;
+
+/* ===================== AUDIO ===================== */
+const AudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+function beep(freq = 440, dur = 0.08, vol = 0.15) {
+  const o = AudioCtx.createOscillator();
+  const g = AudioCtx.createGain();
+  o.frequency.value = freq;
+  o.type = "square";
+  g.gain.value = vol;
+  o.connect(g).connect(AudioCtx.destination);
+  o.start();
+  o.stop(AudioCtx.currentTime + dur);
 }
 
-const wizard = load("assets/wizard.png");
-const skeleton = load("assets/skeleton.png");
-const tiles = load("assets/tiles.png");
+/* ===================== INPUT ===================== */
+let keys = {};
+let mouse = { x: 0, y: 0, down: false };
 
-// ===== PLAYER =====
-let player = {
-  x:canvas.width/2,
-  y:canvas.height/2,
-  hp:100,
-  maxHp:100,
-  mana:100,
-  speed:3,
-  damage:1,
-  manaRegen:0.1
-};
+addEventListener("keydown", e => keys[e.key.toLowerCase()] = true);
+addEventListener("keyup", e => keys[e.key.toLowerCase()] = false);
 
-// ===== SYSTEMS =====
-let level=1;
-let keys={}, bullets=[], enemies=[], items=[];
-let mouse={x:0,y:0};
-let showInventory=false;
-
-// 🎒 INVENTORY
-let inventory=[];
-
-// ⚔️ EQUIPMENT
-let equipment = {
-  weapon:null,
-  boots:null,
-  artifact:null
-};
-
-// INPUT
-document.addEventListener("keydown", e=>{
-  keys[e.key]=true;
-  if(e.key==="i") showInventory=!showInventory;
+canvas.addEventListener("mousemove", e => {
+  const r = canvas.getBoundingClientRect();
+  mouse.x = e.clientX - r.left;
+  mouse.y = e.clientY - r.top;
 });
-document.addEventListener("keyup", e=>keys[e.key]=false);
+canvas.addEventListener("mousedown", () => mouse.down = true);
+canvas.addEventListener("mouseup", () => mouse.down = false);
 
-canvas.addEventListener("mousemove", e=>{
-  let r=canvas.getBoundingClientRect();
-  mouse.x=e.clientX-r.left;
-  mouse.y=e.clientY-r.top;
+/* ===== Mobile joystick ===== */
+let touchMove = { x: 0, y: 0 };
+addEventListener("touchmove", e => {
+  let t = e.touches[0];
+  touchMove.x = (t.clientX - innerWidth / 2) / 80;
+  touchMove.y = (t.clientY - innerHeight / 2) / 80;
 });
 
-canvas.addEventListener("click", clickHandler);
+/* ===================== PLAYER ===================== */
+const player = {
+  x: 0, y: 0, r: 14,
+  hp: 100, maxHp: 100,
+  mana: 100,
+  speed: 3.2,
+  dmg: 1,
+  regen: 0.15,
+  hitCD: 0
+};
 
-// ===== ITEM GENERATION =====
-function createItem(x,y){
+/* ===================== WORLD ===================== */
+let roomX = 0, roomY = 0;
+let enemies = [], bullets = [], particles = [];
+let level = 1;
+let shake = 0;
 
-  const types=["weapon","boots","artifact"];
-  const rarities=["common","rare","epic"];
-
-  let type = types[Math.floor(Math.random()*types.length)];
-  let rarityChance = Math.random();
-
-  let rarity="common";
-  if(rarityChance>0.7) rarity="rare";
-  if(rarityChance>0.9) rarity="epic";
-
-  return {
-    x,y,
-    type,
-    rarity
-  };
+/* ===================== SPRITES ===================== */
+function drawWizard(x, y) {
+  ctx.fillStyle = "#cfa";
+  ctx.fillRect(x - 6, y - 14, 12, 14);
+  ctx.fillStyle = "#345";
+  ctx.fillRect(x - 10, y - 20, 20, 6);
 }
 
-// ===== ITEM POWER =====
-function applyItemStats(){
-
-  // RESET BASE
-  player.damage = 1;
-  player.speed = 3;
-  player.manaRegen = 0.1;
-
-  for(let slot in equipment){
-    let item = equipment[slot];
-    if(!item) continue;
-
-    let mult = 1;
-    if(item.rarity==="rare") mult=1.5;
-    if(item.rarity==="epic") mult=2;
-
-    if(item.type==="weapon"){
-      player.damage += 1 * mult;
-    }
-    if(item.type==="boots"){
-      player.speed += 1 * mult;
-    }
-    if(item.type==="artifact"){
-      player.manaRegen += 0.1 * mult;
-    }
-  }
+function drawSkeleton(x, y, boss = false) {
+  ctx.strokeStyle = boss ? "#f55" : "#ddd";
+  ctx.lineWidth = boss ? 4 : 2;
+  ctx.beginPath();
+  ctx.arc(x, y, boss ? 18 : 12, 0, TAU);
+  ctx.stroke();
 }
 
-// ===== CLICK HANDLER =====
-function clickHandler(e){
+/* ===================== SPAWN ===================== */
+function spawnRoom() {
+  enemies.length = 0;
+  bullets.length = 0;
+  particles.length = 0;
 
-  if(showInventory){
-    let y = 150;
+  player.x = canvas.width / 2;
+  player.y = canvas.height / 2;
 
-    inventory.forEach((item,i)=>{
-      if(mouse.x>200 && mouse.x<500 &&
-         mouse.y>y+i*30 && mouse.y<y+i*30+25){
-
-        // equip item
-        equipment[item.type] = item;
-        applyItemStats();
-      }
-    });
-    return;
-  }
-
-  // shoot
-  let dx=mouse.x-player.x;
-  let dy=mouse.y-player.y;
-  let d=Math.hypot(dx,dy)||1;
-
-  if(player.mana>=5){
-    player.mana-=5;
-    bullets.push({
-      x:player.x,
-      y:player.y,
-      dx:dx/d*8,
-      dy:dy/d*8,
-      dmg:player.damage
-    });
-  }
-}
-
-// ===== SPAWN =====
-function spawn(){
-  enemies=[];
-  for(let i=0;i<3+level;i++){
+  if ((roomX + roomY) % 5 === 0) {
     enemies.push({
-      x:Math.random()*canvas.width,
-      y:Math.random()*canvas.height,
-      hp:2+level,
-      speed:1
+      x: canvas.width / 2,
+      y: 120,
+      hp: 80 + level * 10,
+      speed: 1,
+      boss: true
     });
+  } else {
+    for (let i = 0; i < 4 + level; i++) {
+      enemies.push({
+        x: Math.random() * canvas.width,
+        y: Math.random() * canvas.height,
+        hp: 6 + level,
+        speed: 1.2
+      });
+    }
   }
 }
-spawn();
+spawnRoom();
 
-// ===== UPDATE =====
-function update(){
+/* ===================== UPDATE ===================== */
+function update(dt) {
+  let mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0) + touchMove.x;
+  let my = (keys.s ? 1 : 0) - (keys.w ? 1 : 0) + touchMove.y;
+  let m = Math.hypot(mx, my) || 1;
 
-  let mx=0,my=0;
+  player.x += mx / m * player.speed * dt;
+  player.y += my / m * player.speed * dt;
 
-  if(keys["w"])my--;
-  if(keys["s"])my++;
-  if(keys["a"])mx--;
-  if(keys["d"])mx++;
+  player.mana = Math.min(100, player.mana + player.regen * dt);
+  if (player.hitCD > 0) player.hitCD -= dt;
 
-  let mag=Math.hypot(mx,my)||1;
-
-  player.x += mx/mag*player.speed;
-  player.y += my/mag*player.speed;
-
-  player.x=Math.max(50,Math.min(canvas.width-50,player.x));
-  player.y=Math.max(50,Math.min(canvas.height-50,player.y));
-
-  player.mana = Math.min(100, player.mana + player.manaRegen);
-
-  // bullets
-  bullets.forEach(b=>{
-    b.x+=b.dx;
-    b.y+=b.dy;
-  });
-
-  // enemies
-  enemies.forEach(e=>{
-    let dx=player.x-e.x;
-    let dy=player.y-e.y;
-    let d=Math.hypot(dx,dy)||1;
-
-    e.x+=dx/d*e.speed;
-    e.y+=dy/d*e.speed;
-
-    if(Math.hypot(player.x-e.x,player.y-e.y)<25){
-      player.hp -= 0.2;
-    }
-  });
-
-  // collisions
-  bullets.forEach(b=>{
-    enemies.forEach(e=>{
-      if(Math.hypot(b.x-e.x,b.y-e.y)<20){
-        e.hp-=b.dmg;
-        b.dead=true;
-
-        if(e.hp<=0 && Math.random()<0.5){
-          items.push(createItem(e.x,e.y));
-        }
-      }
+  if (mouse.down && player.mana > 4) {
+    let dx = mouse.x - player.x;
+    let dy = mouse.y - player.y;
+    let d = Math.hypot(dx, dy) || 1;
+    bullets.push({
+      x: player.x,
+      y: player.y,
+      dx: dx / d * 9,
+      dy: dy / d * 9,
+      dmg: player.dmg
     });
-  });
+    player.mana -= 4;
+    beep(600);
+    mouse.down = false;
+  }
 
-  // pick up items
-  items.forEach(it=>{
-    if(Math.hypot(player.x-it.x,player.y-it.y)<20){
-      inventory.push(it);
-      it.picked=true;
-    }
+  bullets.forEach(b => {
+    b.x += b.dx * dt;
+    b.y += b.dy * dt;
   });
 
   bullets = bullets.filter(b =>
-    !b.dead &&
-    b.x>0 && b.x<canvas.width &&
-    b.y>0 && b.y<canvas.height
+    b.x > 0 && b.y > 0 && b.x < canvas.width && b.y < canvas.height
   );
 
-  enemies = enemies.filter(e=>e.hp>0);
-  items = items.filter(i=>!i.picked);
+  enemies.forEach(e => {
+    let dx = player.x - e.x;
+    let dy = player.y - e.y;
+    let d = Math.hypot(dx, dy) || 1;
+    e.x += dx / d * e.speed * dt;
+    e.y += dy / d * e.speed * dt;
 
-  if(enemies.length===0){
-    level++;
-    spawn();
-  }
-}
+    if (d < player.r + 16 && player.hitCD <= 0) {
+      player.hp -= e.boss ? 18 : 8;
+      player.hitCD = 40;
+      shake = 12;
+      beep(120);
+    }
+  });
 
-// ===== DRAW =====
-function draw(){
-
-  ctx.clearRect(0,0,canvas.width,canvas.height);
-
-  if(loaded<3){
-    ctx.fillText("Loading...",200,200);
-    return;
-  }
-
-  // floor
-  for(let x=0;x<canvas.width;x+=32){
-    for(let y=0;y<canvas.height;y+=32){
-      ctx.drawImage(tiles,x,y,32,32);
+  for (let i = bullets.length - 1; i >= 0; i--) {
+    for (let j = enemies.length - 1; j >= 0; j--) {
+      if (Math.hypot(bullets[i].x - enemies[j].x, bullets[i].y - enemies[j].y) < 16) {
+        enemies[j].hp -= bullets[i].dmg;
+        bullets.splice(i, 1);
+        beep(300, 0.05);
+        break;
+      }
     }
   }
 
-  // items
-  items.forEach(it=>{
-    ctx.fillStyle = it.rarity==="common"?"white":
-                    it.rarity==="rare"?"blue":"purple";
-
-    ctx.beginPath();
-    ctx.arc(it.x,it.y,6,0,6.28);
-    ctx.fill();
+  enemies = enemies.filter(e => {
+    if (e.hp <= 0) {
+      for (let i = 0; i < 20; i++)
+        particles.push({
+          x: e.x, y: e.y,
+          dx: (Math.random() - 0.5) * 4,
+          dy: (Math.random() - 0.5) * 4,
+          life: 30
+        });
+      return false;
+    }
+    return true;
   });
 
-  // player
-  ctx.drawImage(wizard,player.x-24,player.y-48,48,48);
-
-  // enemies
-  enemies.forEach(e=>{
-    ctx.drawImage(skeleton,e.x-20,e.y-20,40,40);
+  particles.forEach(p => {
+    p.x += p.dx;
+    p.y += p.dy;
+    p.life--;
   });
+  particles = particles.filter(p => p.life > 0);
 
-  // bullets
-  bullets.forEach(b=>{
-    ctx.fillStyle="orange";
-    ctx.beginPath();
-    ctx.arc(b.x,b.y,4,0,6.28);
-    ctx.fill();
-  });
-
-  // UI
-  ctx.fillStyle="red";
-  ctx.fillRect(20,20,(player.hp/player.maxHp)*200,10);
-
-  ctx.fillStyle="blue";
-  ctx.fillRect(20,40,player.mana*2,10);
-
-  ctx.fillStyle="white";
-  ctx.fillText("Level: "+level,20,70);
-
-  // ===== INVENTORY UI =====
-  if(showInventory){
-
-    ctx.fillStyle="black";
-    ctx.fillRect(150,80,450,350);
-
-    ctx.fillStyle="white";
-    ctx.fillText("INVENTORY (click to equip)",200,120);
-
-    inventory.forEach((item,i)=>{
-
-      let color = item.rarity==="common"?"white":
-                  item.rarity==="rare"?"blue":"purple";
-
-      ctx.fillStyle=color;
-      ctx.fillText(
-        item.type+" ("+item.rarity+")",
-        200,
-        150 + i*30
-      );
-    });
-
-    // equipment display
-    ctx.fillStyle="yellow";
-    ctx.fillText("EQUIPMENT:",400,120);
-
-    Object.keys(equipment).forEach((slot,i)=>{
-      let item = equipment[slot];
-      ctx.fillText(
-        slot + ": " + (item ? item.rarity : "none"),
-        400,
-        150 + i*30
-      );
-    });
+  if (!enemies.length) {
+    roomX++;
+    level++;
+    spawnRoom();
   }
+
+  shake *= 0.85;
 }
 
-// LOOP
-function loop(){
-  update();
+/* ===================== DRAW ===================== */
+function draw() {
+  ctx.save();
+  ctx.translate((Math.random() - 0.5) * shake, (Math.random() - 0.5) * shake);
+  ctx.fillStyle = "#1a1a1a";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  particles.forEach(p => {
+    ctx.fillStyle = "orange";
+    ctx.fillRect(p.x, p.y, 2, 2);
+  });
+
+  drawWizard(player.x, player.y);
+
+  enemies.forEach(e => drawSkeleton(e.x, e.y, e.boss));
+
+  bullets.forEach(b => {
+    ctx.fillStyle = "yellow";
+    ctx.beginPath();
+    ctx.arc(b.x, b.y, 4, 0, TAU);
+    ctx.fill();
+  });
+
+  ctx.restore();
+
+  ctx.fillStyle = "red";
+  ctx.fillRect(20, 20, (player.hp / player.maxHp) * 200, 10);
+  ctx.fillStyle = "blue";
+  ctx.fillRect(20, 36, player.mana * 2, 8);
+  ctx.fillStyle = "white";
+  ctx.fillText(`Room ${roomX}  Level ${level}`, 20, 60);
+}
+
+/* ===================== LOOP ===================== */
+let last = 0;
+function loop(t) {
+  let dt = Math.min((t - last) / 16.6, 2);
+  last = t;
+  update(dt);
   draw();
   requestAnimationFrame(loop);
 }
-loop();
+requestAnimationFrame(loop);
