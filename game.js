@@ -1,4 +1,4 @@
-// ===== CLEANER VERSION - Into Darkness =====
+// ===== INTO DARKNESS - Sprite Sheet Animation Version =====
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d");
 canvas.width = window.innerWidth;
@@ -14,7 +14,7 @@ window.addEventListener("resize", () => {
   canvas.height = window.innerHeight;
 });
 
-// Load assets
+// ===== LOAD ASSETS =====
 let loaded = 0;
 function load(src) {
   const img = new Image();
@@ -22,14 +22,14 @@ function load(src) {
   img.onload = () => loaded++;
   return img;
 }
-const wizardImg = load("assets/wizard.png");
-const skeleton = load("assets/skeleton.png");
+
+const wizardSheet = load("assets/wizard_sheet.png");
+const skeletonSheet = load("assets/skeleton_sheet.png");
 const tiles = load("assets/tiles.png");
 
-// Game state
+// ===== GAME STATE =====
 let currentSpell = "fire";
 let level = 1;
-let currentMap = 1;
 let score = 0;
 
 let player = {
@@ -41,7 +41,9 @@ let player = {
   speed: 3,
   dash: 0,
   dashCooldown: 0,
-  attackAnim: 0
+  anim: "idle",
+  animFrame: 0,
+  animTimer: 0
 };
 
 let keys = {};
@@ -49,10 +51,9 @@ let bullets = [];
 let enemies = [];
 let doors = [];
 let items = [];
-let particles = [];
 let mouse = { x: 0, y: 0 };
 
-// Class selection
+// ===== CLASS SELECTION =====
 function selectClass(cls) {
   playerClass = cls;
   gameState = "playing";
@@ -62,7 +63,7 @@ function selectClass(cls) {
   } else if (cls === "warrior") {
     player.hp = 150; player.maxHp = 150; player.mana = 0; player.speed = 2.7;
   } else if (cls === "archer") {
-    player.hp = 105; player.maxHp = 105; player.mana = 70; player.speed = 3.9;
+    player.hp = 105; player.maxHp = 105; patient.mana = 70; player.speed = 3.9;
   }
 
   player.x = canvas.width / 2;
@@ -72,7 +73,7 @@ function selectClass(cls) {
   spawn();
 }
 
-// Input
+// ===== INPUT =====
 document.addEventListener("keydown", e => {
   keys[e.key] = true;
   if (gameState === "playing") {
@@ -94,86 +95,74 @@ canvas.addEventListener("mousemove", e => {
 });
 
 canvas.addEventListener("click", () => {
-  if (gameState === "selecting") {
-    // Class selection logic would go here if needed
-  } else {
-    attack();
-  }
+  if (gameState === "playing") attack();
 });
 
-// Attack function
+// ===== ATTACK =====
 function attack() {
-  if (gameState !== "playing") return;
-
   const dx = mouse.x - player.x;
   const dy = mouse.y - player.y;
   const d = Math.hypot(dx, dy) || 1;
 
-  player.attackAnim = 15;
+  player.anim = "attack";
+  player.animFrame = 0;
+  player.animTimer = 0;
 
   if (playerClass === "wizard") {
     if (currentSpell === "fire" && player.mana >= 5) {
       player.mana -= 5;
-      bullets.push({ x: player.x, y: player.y, dx: dx/d * 8, dy: dy/d * 8, dmg: 1 });
+      bullets.push({ x: player.x, y: player.y, dx: dx/d*8, dy: dy/d*8, dmg: 1 });
     }
     if (currentSpell === "lightning" && player.mana >= 18) {
       player.mana -= 18;
       enemies.forEach(e => {
-        if (Math.hypot(player.x - e.x, player.y - e.y) < 600) {
-          e.hp -= 4;
-        }
+        if (Math.hypot(player.x - e.x, player.y - e.y) < 500) e.hp -= 4;
       });
     }
     if (currentSpell === "stun" && player.mana >= 12) {
       player.mana -= 12;
       enemies.forEach(e => {
-        if (Math.hypot(player.x - e.x, player.y - e.y) < 110) e.stun = 50;
+        if (Math.hypot(player.x - e.x, player.y - e.y) < 100) e.stun = 45;
       });
     }
   } else if (playerClass === "warrior") {
     enemies.forEach(e => {
-      if (Math.hypot(player.x - e.x, player.y - e.y) < 80) {
+      if (Math.hypot(player.x - e.x, player.y - e.y) < 75) {
         e.hp -= 6;
-        e.hitFlash = 8;
+        e.hitFlash = 6;
       }
     });
   } else if (playerClass === "archer") {
-    bullets.push({ x: player.x, y: player.y, dx: dx/d * 11, dy: dy/d * 11, dmg: 1.5 });
+    bullets.push({ x: player.x, y: player.y, dx: dx/d*10, dy: dy/d*10, dmg: 1.6 });
   }
 }
 
-// Spawn enemies
+// ===== SPAWN =====
 function spawn() {
   enemies = [];
   doors = [];
   items = [];
 
-  if (level % 5 === 0) {
+  const count = level % 5 === 0 ? 1 : 4 + level;
+
+  for (let i = 0; i < count; i++) {
     enemies.push({
-      x: canvas.width / 2,
-      y: canvas.height / 2,
-      hp: 50 + level * 10,
-      maxHp: 50 + level * 10,
-      speed: 1.3,
-      isBoss: true,
-      size: 70,
-      stun: 0
+      x: Math.random() * canvas.width,
+      y: Math.random() * canvas.height,
+      hp: level % 5 === 0 ? 50 + level * 8 : 2 + level,
+      maxHp: level % 5 === 0 ? 50 + level * 8 : 2 + level,
+      speed: level % 5 === 0 ? 1.2 : 1,
+      isBoss: level % 5 === 0,
+      size: level % 5 === 0 ? 60 : 36,
+      stun: 0,
+      hitFlash: 0,
+      animFrame: 0
     });
-  } else {
-    for (let i = 0; i < 4 + level; i++) {
-      enemies.push({
-        x: Math.random() * canvas.width,
-        y: Math.random() * canvas.height,
-        hp: 2 + level,
-        speed: 1,
-        stun: 0
-      });
-    }
   }
 }
 spawn();
 
-// Update game
+// ===== UPDATE =====
 function update() {
   if (gameState !== "playing") return;
   frame++;
@@ -186,19 +175,41 @@ function update() {
   if (keys["d"] || keys["D"]) mx++;
 
   const mag = Math.hypot(mx, my) || 1;
-  const currentSpeed = player.dash > 0 ? 8 : player.speed;
-  player.x += (mx / mag) * currentSpeed;
-  player.y += (my / mag) * currentSpeed;
+  const spd = player.dash > 0 ? 7.5 : player.speed;
+
+  player.x += (mx / mag) * spd;
+  player.y += (my / mag) * spd;
 
   if (player.dash > 0) player.dash--;
   if (player.dashCooldown > 0) player.dashCooldown--;
-  if (player.attackAnim > 0) player.attackAnim--;
 
   player.x = Math.max(40, Math.min(canvas.width - 40, player.x));
   player.y = Math.max(40, Math.min(canvas.height - 40, player.y));
 
+  // Animation logic
+  const isMoving = mx !== 0 || my !== 0;
+
+  if (player.anim === "attack") {
+    player.animTimer++;
+    if (player.animTimer > 4) {
+      player.animFrame++;
+      player.animTimer = 0;
+    }
+    if (player.animFrame > 5) {
+      player.anim = isMoving ? "walk" : "idle";
+      player.animFrame = 0;
+    }
+  } else {
+    player.anim = isMoving ? "walk" : "idle";
+    player.animTimer++;
+    if (player.animTimer > 6) {
+      player.animFrame = (player.animFrame + 1) % 6;
+      player.animTimer = 0;
+    }
+  }
+
   if (playerClass !== "warrior") {
-    player.mana = Math.min(100, player.mana + 0.12);
+    player.mana = Math.min(100, player.mana + 0.1);
   }
 
   // Bullets
@@ -216,18 +227,22 @@ function update() {
     e.x += (dx / d) * e.speed;
     e.y += (dy / d) * e.speed;
 
-    if (Math.hypot(player.x - e.x, player.y - e.y) < 28) {
-      player.hp -= 0.3;
+    if (Math.hypot(player.x - e.x, player.y - e.y) < 25) {
+      player.hp -= 0.25;
     }
+
+    // Simple enemy animation
+    e.animFrame = (e.animFrame + 1) % 8;
   });
 
-  // Collisions
+  // Bullet collision
   bullets.forEach(b => {
     enemies.forEach(e => {
-      if (Math.hypot(b.x - e.x, b.y - e.y) < 22) {
+      if (Math.hypot(b.x - e.x, b.y - e.y) < 20) {
         e.hp -= b.dmg || 1;
         b.dead = true;
-        if (e.hp <= 0) score += e.isBoss ? 50 : 10;
+        e.hitFlash = 5;
+        if (e.hp <= 0) score += e.isBoss ? 40 : 8;
       }
     });
   });
@@ -237,12 +252,12 @@ function update() {
 
   // Doors
   if (enemies.length === 0 && doors.length === 0) {
-    doors.push({ x: canvas.width / 2, y: 50 });
-    doors.push({ x: canvas.width / 2, y: canvas.height - 50 });
+    doors.push({ x: canvas.width / 2, y: 45 });
+    doors.push({ x: canvas.width / 2, y: canvas.height - 45 });
   }
 
   doors.forEach(door => {
-    if (Math.hypot(player.x - door.x, player.y - door.y) < 50) {
+    if (Math.hypot(player.x - door.x, player.y - door.y) < 45) {
       level++;
       doors = [];
       spawn();
@@ -257,7 +272,7 @@ function update() {
   }
 }
 
-// Draw game
+// ===== DRAW =====
 function draw() {
   ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -267,54 +282,69 @@ function draw() {
     return;
   }
 
-  // Simple floor
-  ctx.fillStyle = "#222";
+  // Floor
+  ctx.fillStyle = "#1a1a1a";
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-  // Draw tiles simply
-  for (let x = 0; x < canvas.width; x += 32) {
-    for (let y = 0; y < canvas.height; y += 32) {
-      ctx.drawImage(tiles, x, y, 32, 32);
-    }
-  }
+  // Simple tile background
+  ctx.drawImage(tiles, 0, 0, canvas.width, canvas.height);
 
-  // Player
-  ctx.drawImage(wizardImg, player.x - 24, player.y - 48, 48, 48);
+  // ===== PLAYER ANIMATION =====
+  const isMoving = keys["w"] || keys["s"] || keys["a"] || keys["d"];
+  let animName = player.anim;
+
+  // Choose frame row based on animation
+  let row = 0;
+  if (animName === "idle") row = 0;
+  if (animName === "walk") row = 1;
+  if (animName === "attack") row = 3;
+
+  const frameW = 48;
+  const frameH = 64;
+  const sx = player.animFrame * frameW;
+  const sy = row * frameH;
+
+  ctx.drawImage(
+    wizardSheet,
+    sx, sy, frameW, frameH,
+    player.x - 24, player.y - 48, 48, 64
+  );
 
   // Enemies
   enemies.forEach(e => {
-    const size = e.isBoss ? 65 : 38;
-    ctx.drawImage(skeleton, e.x - size/2, e.y - size/2, size, size);
+    const size = e.isBoss ? 56 : 36;
+    const ex = Math.floor(e.animFrame % 6) * 32;
+    ctx.drawImage(skeletonSheet, ex, 0, 32, 48, e.x - size/2, e.y - size/2, size, size);
   });
 
   // Bullets
   ctx.fillStyle = "#ffaa33";
   bullets.forEach(b => {
     ctx.beginPath();
-    ctx.arc(b.x, b.y, 5, 0, Math.PI * 2);
+    ctx.arc(b.x, b.y, 4, 0, Math.PI * 2);
     ctx.fill();
   });
 
   // Doors
   ctx.fillStyle = "#8B4513";
-  doors.forEach(door => {
-    ctx.fillRect(door.x - 30, door.y - 30, 60, 60);
+  doors.forEach(d => {
+    ctx.fillRect(d.x - 28, d.y - 28, 56, 56);
   });
 
   // UI
-  ctx.fillStyle = "red";
+  ctx.fillStyle = "#ff3333";
   ctx.fillRect(20, 20, (player.hp / player.maxHp) * 200, 12);
-  ctx.fillStyle = "blue";
+  ctx.fillStyle = "#3399ff";
   ctx.fillRect(20, 38, player.mana * 2, 12);
 
   ctx.fillStyle = "white";
   ctx.font = "18px sans-serif";
-  ctx.fillText("Level: " + level, 20, 70);
-  ctx.fillText("Class: " + playerClass, 20, 92);
-  ctx.fillText("Score: " + score, 20, 114);
+  ctx.fillText("Level: " + level, 20, 65);
+  ctx.fillText("Class: " + playerClass.toUpperCase(), 20, 85);
+  ctx.fillText("Score: " + score, 20, 105);
 }
 
-// Game loop
+// Game Loop
 function loop() {
   update();
   draw();
