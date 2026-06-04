@@ -108,7 +108,7 @@ function spawnParticles(x, y, color = "yellow", count = 5) {
 
 /* ---------- SPAWN ---------- */
 function spawnRoom() {
-  enemies.length = bullets.length = enemyBullets.length = loot.length = 0;
+  enemies.length = bullets.length = enemyBullets.length = loot.length = particles.length = 0;
   boss = null;
   shopOpen = false;
 
@@ -202,7 +202,7 @@ function update(dt) {
 
   /* Shooting */
   if (player.shootCD > 0) player.shootCD -= dt;
-  if (mouse.down && player.shootCD <= 0 && !shopOpen) {
+  if (mouse.down && player.shootCD <= 0 && !shopOpen && player.hp > 0) {
     const a = Math.atan2(mouse.y - player.y, mouse.x - player.x);
     const dmg = player.baseDmg + (player.equip.weapon?.dmg || 0);
     bullets.push({
@@ -351,6 +351,23 @@ function update(dt) {
   if (click && shopOpen) {
     if (mouse.x < 250 || mouse.x > 550 || mouse.y < 50 || mouse.y > 350) {
       shopOpen = false;
+    } else {
+      /* Handle shop item clicks */
+      let yOffset = 100;
+      activeNPC.shop.forEach((item, idx) => {
+        const hitbox = {
+          x1: 270,
+          x2: 510,
+          y1: yOffset - 12,
+          y2: yOffset + 8
+        };
+        
+        if (mouse.x >= hitbox.x1 && mouse.x <= hitbox.x2 && mouse.y >= hitbox.y1 && mouse.y <= hitbox.y2) {
+          buyItem(item);
+        }
+        
+        yOffset += 25;
+      });
     }
   }
 }
@@ -552,31 +569,6 @@ function draw() {
     ctx.fillRect(0, 0, canvas.width, canvas.height);
   }
 }
-
-/* ---------- SHOP CLICK HANDLING ---------- */
-canvas.addEventListener("click", e => {
-  if (!shopOpen || !activeNPC) return;
-  
-  const r = canvas.getBoundingClientRect();
-  const x = e.clientX - r.left;
-  const y = e.clientY - r.top;
-  
-  let yOffset = 100;
-  activeNPC.shop.forEach((item, idx) => {
-    const hitbox = {
-      x1: 270,
-      x2: 510,
-      y1: yOffset - 12,
-      y2: yOffset + 8
-    };
-    
-    if (x >= hitbox.x1 && x <= hitbox.x2 && y >= hitbox.y1 && y <= hitbox.y2) {
-      buyItem(item);
-    }
-    
-    yOffset += 25;
-  });
-});
 
 /* ---------- LOOP ---------- */
 let last = 0;
