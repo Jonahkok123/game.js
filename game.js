@@ -50,22 +50,28 @@ const player = {
   speed: 3,
   gold: 0,
   shootCD: 0,
-  equip: { weapon: null, chest: null }
+  equip: { weapon: null, chest: null, boots: null }
 };
 
 /* ---------- ITEMS ---------- */
 const WEAPONS = [
   { name: "Iron Sword", slot: "weapon", dmg: 3, cost: 10 },
-  { name: "Phoenix Staff", slot: "weapon", dmg: 4, fire: true, cost: 25 }
+  { name: "Phoenix Staff", slot: "weapon", dmg: 4, fire: true, cost: 25 },
+  { name: "Obsidian Blade", slot: "weapon", dmg: 6, cost: 50 }
 ];
 const ARMOUR = [
-  { name: "Chainmail", slot: "chest", armour: 0.25, cost: 20 }
+  { name: "Chainmail", slot: "chest", armour: 0.25, cost: 20 },
+  { name: "Dragon Plate", slot: "chest", armour: 0.4, cost: 60 }
+];
+const BOOTS = [
+  { name: "Sprint Boots", slot: "boots", speed: 1.5, cost: 15 },
+  { name: "Wind Treads", slot: "boots", speed: 2.5, cost: 40 }
 ];
 const inventory = [];
 
 /* ---------- NPC ---------- */
 const NPCS = [
-  { name: "Blacksmith", x: 200, y: 220, shop: [...WEAPONS, ...ARMOUR] }
+  { name: "Blacksmith", x: 200, y: 220, shop: [...WEAPONS, ...ARMOUR, ...BOOTS] }
 ];
 let activeNPC = null;
 let shopOpen = false;
@@ -78,11 +84,27 @@ let bullets = [];
 let enemyBullets = [];
 let loot = [];
 let boss = null;
+let particles = [];
 
 /* ---------- DEATH & PROGRESSION ---------- */
 let deathFade = 0;
 let deathCount = 0;
+let showTutorial = true;
 const graves = [];
+
+/* ---------- PARTICLES ---------- */
+function spawnParticles(x, y, color = "red", count = 5) {
+  for (let i = 0; i < count; i++) {
+    const angle = (Math.PI * 2 * i) / count;
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * 3,
+      vy: Math.sin(angle) * 3,
+      life: 0.3,
+      color
+    });
+  }
+}
 
 /* ---------- SPAWN ---------- */
 function spawnRoom() {
@@ -152,6 +174,11 @@ function update(dt) {
     return;
   }
 
+  /* Tutorial dismiss */
+  if (showTutorial && click) {
+    showTutorial = false;
+  }
+
   /* World movement */
   if (worldTransitionCD > 0) worldTransitionCD -= dt;
   if (worldTransitionCD <= 0 && !shopOpen) {
@@ -165,8 +192,9 @@ function update(dt) {
   let mx = (keys.d ? 1 : 0) - (keys.a ? 1 : 0);
   let my = (keys.s ? 1 : 0) - (keys.w ? 1 : 0);
   let mag = Math.hypot(mx, my) || 1;
-  player.x += (mx / mag) * player.speed * dt;
-  player.y += (my / mag) * player.speed * dt;
+  const speedBoost = (player.equip.boots?.speed || 1);
+  player.x += (mx / mag) * player.speed * speedBoost * dt;
+  player.y += (my / mag) * player.speed * speedBoost * dt;
 
   /* Clamp player to canvas */
   player.x = Math.max(PLAYER_RADIUS, Math.min(canvas.width - PLAYER_RADIUS, player.x));
@@ -206,6 +234,7 @@ function update(dt) {
       const armour = Math.min(0.9, Math.max(0, player.equip.chest?.armour || 0));
       player.hp -= e.atk * (1 - armour);
       e.hitCD = ENEMY_HIT_COOLDOWN;
+      spawnParticles(player.x, player.y, "red", 3);
     }
 
     /* Enemy shooting */
@@ -223,6 +252,7 @@ function update(dt) {
     }
 
     if (e.hp <= 0) {
+      spawnParticles(e.x, e.y, "#ff5555", 8);
       loot.push({ x: e.x, y: e.y, gold: 5 + Math.floor(deathCount * 1.5) });
       return false;
     }
@@ -237,12 +267,14 @@ function update(dt) {
         e.hp -= b.dmg;
         e.hitFlash = 0.1;
         b.used = true;
+        spawnParticles(e.x, e.y, "yellow", 4);
         break;
       }
     }
     if (boss && !b.used && Math.hypot(b.x - boss.x, b.y - boss.y) < BOSS_RADIUS) {
       boss.hp -= b.dmg;
       b.used = true;
+      spawnParticles(boss.x, boss.y, "orange", 5);
     }
   });
   bullets = bullets.filter(b => !b.used && b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20);
@@ -265,6 +297,7 @@ function update(dt) {
       boss.cd = 1;
     }
     if (boss.hp <= 0) {
+      spawnParticles(boss.x, boss.y, "purple", 15);
       loot.push({ x: boss.x, y: boss.y, gold: 50 + deathCount * 10 });
       boss = null;
     }
@@ -278,6 +311,7 @@ function update(dt) {
       const armour = Math.min(0.9, Math.max(0, player.equip.chest?.armour || 0));
       player.hp -= b.dmg * (1 - armour);
       b.used = true;
+      spawnParticles(player.x, player.y, "red", 4);
     }
   });
   enemyBullets = enemyBullets.filter(b => !b.used && b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20);
@@ -286,9 +320,19 @@ function update(dt) {
   loot = loot.filter(l => {
     if (Math.hypot(l.x - player.x, l.y - player.y) < PICKUP_RADIUS) {
       player.gold += l.gold;
+      spawnParticles(player.x, player.y, "gold", 6);
       return false;
     }
     return true;
+  });
+
+  /* Particles update */
+  particles = particles.filter(p => {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 5 * dt; /* gravity */
+    p.life -= dt;
+    return p.life > 0;
   });
 
   if (player.hp <= 0 && deathFade <= 0) deathFade = 1;
@@ -407,6 +451,16 @@ function draw() {
     ctx.restore();
   }
 
+  /* Draw particles */
+  particles.forEach(p => {
+    ctx.globalAlpha = p.life / 0.3;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  });
+  ctx.globalAlpha = 1;
+
   ctx.fillStyle = "gold";
   loot.forEach(l => ctx.fillRect(l.x - 4, l.y - 4, 8, 8));
 
@@ -415,9 +469,26 @@ function draw() {
   ctx.strokeStyle = "white";
   ctx.strokeRect(20, 20, 200, 8);
   ctx.fillStyle = "white";
-  ctx.fillText("Gold: " + player.gold, 20, 50);
-  ctx.fillText("Room: (" + world.x + ", " + world.y + ")", 20, 70);
-  ctx.fillText("Deaths: " + deathCount, 20, 90);
+  ctx.fillText("HP: " + Math.ceil(player.hp) + "/" + player.maxHp, 20, 50);
+  ctx.fillText("Gold: " + player.gold, 20, 70);
+  ctx.fillText("Room: (" + world.x + ", " + world.y + ")", 20, 90);
+  ctx.fillText("Deaths: " + deathCount, 20, 110);
+
+  /* Equipment display */
+  ctx.fillText("Equipment: ", 20, 130);
+  ctx.fillStyle = "#ffff00";
+  ctx.fillText((player.equip.weapon?.name || "None"), 140, 130);
+  ctx.fillStyle = "#ffb347";
+  ctx.fillText((player.equip.chest?.name || "None"), 140, 150);
+  ctx.fillStyle = "#00ff00";
+  ctx.fillText((player.equip.boots?.name || "None"), 140, 170);
+
+  /* Boss location hint */
+  if (world.y !== -1 && !shopOpen) {
+    ctx.fillStyle = "#ffaa00";
+    ctx.font = "12px Arial";
+    ctx.fillText("↑ Go UP to face the BOSS", canvas.width - 200, 30);
+  }
 
   if (shopOpen && activeNPC) {
     ctx.fillStyle = "rgba(0,0,0,0.9)";
@@ -448,6 +519,32 @@ function draw() {
     ctx.fillStyle = "#aaa";
     ctx.font = "12px Arial";
     ctx.fillText("Click item to buy (click outside to close)", 260, 330);
+  }
+
+  /* Tutorial screen */
+  if (showTutorial) {
+    ctx.fillStyle = "rgba(0,0,0,0.8)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#ffff00";
+    ctx.font = "bold 24px Arial";
+    ctx.fillText("INTO DARKNESS", canvas.width / 2 - 100, 100);
+    ctx.fillStyle = "white";
+    ctx.font = "16px Arial";
+    const tutorial = [
+      "WASD - Move",
+      "Mouse - Aim",
+      "Click - Shoot",
+      "Arrow Keys - Change Rooms",
+      "↑ UP to reach the BOSS",
+      "Click Blacksmith to buy items",
+      "",
+      "Click anywhere to start"
+    ];
+    let y = 200;
+    tutorial.forEach(line => {
+      ctx.fillText(line, canvas.width / 2 - 100, y);
+      y += 40;
+    });
   }
 
   if (deathFade > 0) {
