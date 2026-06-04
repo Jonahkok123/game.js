@@ -85,7 +85,6 @@ let enemyBullets = [];
 let loot = [];
 let boss = null;
 let particles = [];
-let bloodSplats = [];
 
 /* ---------- DEATH & PROGRESSION ---------- */
 let deathFade = 0;
@@ -93,22 +92,8 @@ let deathCount = 0;
 let showTutorial = true;
 const graves = [];
 
-/* ---------- BLOOD SPLATS ---------- */
-function spawnBloodSplats(x, y, count = 8) {
-  for (let i = 0; i < count; i++) {
-    const angle = Math.random() * Math.PI * 2;
-    const distance = 5 + Math.random() * 15;
-    bloodSplats.push({
-      x: x + Math.cos(angle) * distance,
-      y: y + Math.sin(angle) * distance,
-      size: 2 + Math.random() * 4,
-      life: 3 + Math.random() * 2
-    });
-  }
-}
-
 /* ---------- PARTICLES ---------- */
-function spawnParticles(x, y, color = "red", count = 5) {
+function spawnParticles(x, y, color = "yellow", count = 5) {
   for (let i = 0; i < count; i++) {
     const angle = (Math.PI * 2 * i) / count;
     particles.push({
@@ -161,7 +146,6 @@ function spawnRoom() {
 /* ---------- RETURN TO TOWN ON DEATH ---------- */
 function handleDeath() {
   graves.push({ x: player.x, y: player.y, roomX: world.x, roomY: world.y });
-  spawnBloodSplats(player.x, player.y, 15);
   player.gold = Math.max(0, player.gold - DEATH_GOLD_PENALTY);
   deathCount++;
   world.x = 0;
@@ -250,7 +234,7 @@ function update(dt) {
       const armour = Math.min(0.9, Math.max(0, player.equip.chest?.armour || 0));
       player.hp -= e.atk * (1 - armour);
       e.hitCD = ENEMY_HIT_COOLDOWN;
-      spawnBloodSplats(player.x, player.y, 5);
+      spawnParticles(player.x, player.y, "#ff6b6b", 3);
     }
 
     /* Enemy shooting */
@@ -268,8 +252,7 @@ function update(dt) {
     }
 
     if (e.hp <= 0) {
-      spawnBloodSplats(e.x, e.y, 12);
-      spawnParticles(e.x, e.y, "#ff5555", 8);
+      spawnParticles(e.x, e.y, "#cccccc", 8);
       loot.push({ x: e.x, y: e.y, gold: 5 + Math.floor(deathCount * 1.5) });
       return false;
     }
@@ -284,7 +267,6 @@ function update(dt) {
         e.hp -= b.dmg;
         e.hitFlash = 0.1;
         b.used = true;
-        spawnBloodSplats(b.x, b.y, 6);
         spawnParticles(e.x, e.y, "yellow", 4);
         break;
       }
@@ -292,7 +274,6 @@ function update(dt) {
     if (boss && !b.used && Math.hypot(b.x - boss.x, b.y - boss.y) < BOSS_RADIUS) {
       boss.hp -= b.dmg;
       b.used = true;
-      spawnBloodSplats(b.x, b.y, 8);
       spawnParticles(boss.x, boss.y, "orange", 5);
     }
   });
@@ -316,7 +297,6 @@ function update(dt) {
       boss.cd = 1;
     }
     if (boss.hp <= 0) {
-      spawnBloodSplats(boss.x, boss.y, 20);
       spawnParticles(boss.x, boss.y, "purple", 15);
       loot.push({ x: boss.x, y: boss.y, gold: 50 + deathCount * 10 });
       boss = null;
@@ -331,8 +311,7 @@ function update(dt) {
       const armour = Math.min(0.9, Math.max(0, player.equip.chest?.armour || 0));
       player.hp -= b.dmg * (1 - armour);
       b.used = true;
-      spawnBloodSplats(player.x, player.y, 6);
-      spawnParticles(player.x, player.y, "red", 4);
+      spawnParticles(player.x, player.y, "#ff6b6b", 4);
     }
   });
   enemyBullets = enemyBullets.filter(b => !b.used && b.x > -20 && b.x < canvas.width + 20 && b.y > -20 && b.y < canvas.height + 20);
@@ -354,12 +333,6 @@ function update(dt) {
     p.vy += 5 * dt; /* gravity */
     p.life -= dt;
     return p.life > 0;
-  });
-
-  /* Blood splats fade */
-  bloodSplats = bloodSplats.filter(b => {
-    b.life -= dt;
-    return b.life > 0;
   });
 
   if (player.hp <= 0 && deathFade <= 0) deathFade = 1;
@@ -392,16 +365,6 @@ function draw() {
       ctx.fillRect(x, y, t, t);
     }
   }
-
-  /* Draw blood splats FIRST (behind everything) */
-  bloodSplats.forEach(b => {
-    ctx.globalAlpha = Math.max(0, b.life / (3 + 2)) * 0.6;
-    ctx.fillStyle = "#8b0000";
-    ctx.beginPath();
-    ctx.arc(b.x, b.y, b.size, 0, Math.PI * 2);
-    ctx.fill();
-  });
-  ctx.globalAlpha = 1;
 
   ctx.font = "14px Arial";
 
